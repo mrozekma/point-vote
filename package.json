@@ -3,15 +3,38 @@
 	"private": true,
 	"version": "0.0.0",
 	"scripts": {
-		"dev": "vite",
-		"build": "vite build",
-		"preview": "vite preview"
+		"server:build": "cross-env NODE_ENV=production webpack",
+		"server:dev": "cross-env NODE_ENV=development webpack --watch",
+		"client:dev": "vite",
+		"client:build": "vite build"
 	},
 	"dependencies": {
-		"vue": "^3.2.25"
+		"ant-design-vue": "^3.2.5",
+		"jira-client": "^8.1.0",
+		"node-oauth": "^0.3.0",
+		"oauth": "^0.9.15",
+		"oauth-1.0a": "^2.2.6",
+		"peerjs": "^1.4.6",
+		"pinia": "^2.0.14",
+		"qs": "^6.10.3",
+		"socket.io": "^4.5.1",
+		"socket.io-client": "^4.5.1",
+		"typescript": "^4.7.2",
+		"vue": "^3.2.25",
+		"vue-router": "4"
 	},
 	"devDependencies": {
+		"@types/jira-client": "^7.1.4",
+		"@types/qs": "^6.9.7",
+		"@types/webpack-env": "^1.17.0",
 		"@vitejs/plugin-vue": "^2.3.3",
-		"vite": "^2.9.9"
+		"@volar-plugins/prettier": "^1.1.4",
+		"cross-env": "^7.0.3",
+		"less": "^4.1.2",
+		"nodemon-webpack-plugin": "^4.7.1",
+		"ts-loader": "^9.3.0",
+		"vite": "^2.9.9",
+		"webpack": "^5.72.1",
+		"webpack-cli": "^4.9.2"
 	}
 }
