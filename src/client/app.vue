@@ -16,4 +16,30 @@ const loggedIn = storeToRefs(store).jira;
 	#app {
 		padding: 10px;
 	}
+
+	.ant-form.two-col {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 5px;
+		padding: 5px;
+
+		.ant-form-item {
+			display: contents;
+
+			// Someday I'll probably come to regret this, but not using these currently and they make large empty grid rows in Firefox
+			&::before, &::after {
+				display: none;
+			}
+
+			.ant-form-item-label {
+				grid-column: 1;
+				font-weight: bold;
+				text-align: right;
+			}
+
+			.ant-form-item-control-wrapper {
+				grid-column: 2;
+			}
+		}
+	}
 </style>

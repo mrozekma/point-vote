@@ -1,26 +1,11 @@
-import fs from 'fs';
 import { Server } from 'socket.io';
 
-import JiraApi from 'jira-client';
-// @ts-ignore
-import { OAuth } from 'oauth';
+import { ClientToServer, JiraUser, ServerToClient, Session } from '../events';
+import { hookSocket as jiraHookSocket } from './jira';
+import Sessions from './sessions';
 
-import { ClientToServer, JiraUser, ServerToClient } from '../events';
-
-interface OAuthError {
-	statusCode: number;
-	data: string;
-}
-
-const JIRA_URL = {
-	protocol: 'http',
-	host: 'localhost',
-	port: 8080,
-};
-const CONSUMER_KEY = 'asdf';
-
-const jiraUrlStr = `${JIRA_URL.protocol}://${JIRA_URL.host}:${JIRA_URL.port}`;
-const privKey = fs.readFileSync('oauth/jira_privatekey.pem', 'utf8');
+const sessions = new Sessions();
+sessions.create('foo', {key: 'k', name: 'name', displayName: 'disp'});
 
 const io = new Server<ClientToServer, ServerToClient>({
 	cors: {
@@ -29,67 +14,37 @@ const io = new Server<ClientToServer, ServerToClient>({
 });
 
 io.on('connection', socket => {
-	socket.on('jiraLogin', (originUrl, cb) => {
-		const oauth = new OAuth(`${jiraUrlStr}/plugins/servlet/oauth/request-token`, `${jiraUrlStr}/plugins/servlet/oauth/access-token`, CONSUMER_KEY, privKey, '1.0', originUrl, 'RSA-SHA1');
-		oauth.getOAuthRequestToken((err: OAuthError | null, token: string, secret: string) => {
-			if(err) {
-				cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
-			} else {
-				console.log(token, secret);
-				cb({ token, secret, url: `${jiraUrlStr}/plugins/servlet/oauth/authorize?oauth_token=${token}` });
+	console.log('connect', socket.id);
+
+	const pathname = socket.handshake.query.pathname;
+	if(typeof pathname === 'string') {
+		if(pathname == '/') {
+			socket.join('home');
+		} else {
+			const session = sessions.get(pathname.substring(1));
+			if(session) {
+				socket.data.session = session;
+				socket.join(`session/${session.id}`);
 			}
-		});
-	});
-	socket.on('jiraLoginFinish', (token, secret, verifier, cb) => {
-		const oauth = new OAuth(`${jiraUrlStr}/plugins/servlet/oauth/request-token`, `${jiraUrlStr}/plugins/servlet/oauth/access-token`, CONSUMER_KEY, privKey, '1.0', null, 'RSA-SHA1');
-		oauth.getOAuthAccessToken(token, secret, verifier, (err: OAuthError | null, token: string, secret: string, results: any) => {
-			if(err) {
-				cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
-			} else {
-				cb({ token, secret });
-			}
-		});
-	});
-	socket.on('jiraGetUser', async (auth, cb) => {
-		const { protocol, host, port } = JIRA_URL;
-		const jira = new JiraApi({
-			protocol, host,
-			port: `${port}`,
-			oauth: {
-				consumer_key: CONSUMER_KEY,
-				consumer_secret: privKey,
-				access_token: auth.token,
-				access_token_secret: auth.secret,
-				signature_method: 'RSA-SHA1',
-			},
-		});
-		try {
-			const info = await jira.getCurrentUser();
-			const user: JiraUser = {
-				key: info.key,
-				name: info.name,
-				displayName: info.displayName,
-				avatar: (() => {
-					// This is really annoying. Why would they format avatarUrls like this.
-					if(!info.avatarUrls || Object.entries(info.avatarUrls).length == 0) {
-						return undefined;
-					}
-					let largest: string = '0';
-					for(const k of Object.keys(info.avatarUrls)) {
-						if(parseInt(k) > parseInt(largest)) {
-							largest = k;
-						}
-					}
-					return info.avatarUrls[largest];
-				})(),
-			};
-			socket.data.user = user;
-			cb(user);
-			console.log(info);
-		} catch(e) {
-			socket.data.user = undefined;
-			cb({ error: `${e}` });
 		}
-	});
+	}
+
+	function onAuth(user: JiraUser) {
+		if(socket.data.session) {
+			(socket.data.session as Session).addMember(user);
+		}
+		// Removal is handled in a disconnect listener setup in sessions.hookSocket()
+	}
+
+	jiraHookSocket(socket, onAuth);
+	sessions.hookSocket(socket);
 });
+
+sessions.on('sessions-changed', sessions => {
+	io.to('home').emit('updateSessions', sessions.map(session => session.toJson()));
+});
+sessions.on('session-changed', session => {
+	io.to(`session/${session.id}`).emit('updateSession', session.toJson());
+});
+
 io.listen(3001);

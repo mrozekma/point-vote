@@ -7,7 +7,7 @@ const def = defineStore('store', {
 	state: () => {
 		return {
 			server: {
-				socket: io('ws://localhost:3001') as Socket<ServerToClient, ClientToServer>,
+				socket: io(`ws://localhost:3001?pathname=${window.location.pathname}`) as Socket<ServerToClient, ClientToServer>,
 				connected: false,
 				error: undefined as string | undefined,
 			},
@@ -27,6 +27,19 @@ const def = defineStore('store', {
 			this.jira = { auth, user };
 			window.localStorage.setItem('jiraToken', auth.token);
 			window.localStorage.setItem('jiraSecret', auth.secret);
+		},
+		getLogin(): Promise<JiraUser> {
+			return new Promise(resolve => {
+				if(this.jira) {
+					return resolve(this.jira.user);
+				}
+				const unsubscribe = this.$subscribe((mutation, state) => {
+					if(state.jira) {
+						unsubscribe();
+						return resolve(state.jira.user);
+					}
+				});
+			});
 		},
 	},
 });
