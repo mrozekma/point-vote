@@ -8,8 +8,13 @@ const loggedIn = storeToRefs(store).jira;
 </script>
 
 <template>
-	<router-view v-if="loggedIn" />
-	<Login v-else />
+	<Suspense>
+		<router-view v-if="loggedIn" />
+		<Login v-else />
+		<template #fallback>
+			<a-spin size="large" />
+		</template>
+	</Suspense>
 </template>
 
 <style lang="less">

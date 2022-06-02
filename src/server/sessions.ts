@@ -2,13 +2,14 @@ import { EventEmitter } from 'events';
 import randomstring from 'randomstring';
 import { Socket } from 'socket.io';
 
-import { ClientToServer, JiraUser, ServerToClient, SessionJson } from '../events';
+import { ClientToServer, ErrorObject, JiraUser, Round, ServerToClient, SessionFullJson, SessionJson } from '../events';
 
 export class Session {
 	public readonly created: Date;
 	public members: JiraUser[];
+	public round: Round | undefined;
 
-	constructor(private readonly sessions: Sessions, public readonly id: string, public readonly name: string, public readonly creator: JiraUser) {
+	constructor(private readonly sessions: Sessions, public readonly id: string, public readonly name: string, public readonly owner: JiraUser) {
 		this.created = new Date();
 		this.members = [];
 	}
@@ -26,19 +27,66 @@ export class Session {
 		}
 	}
 
+	public startRound(description: string, options: string[]) {
+		this.round = {
+			description, options,
+			done: false,
+			votes: {},
+		};
+		this.changed();
+	}
+
+	public endRound() {
+		if(!this.round) {
+			throw new Error("No round");
+		}
+		this.round.done = true;
+		this.changed();
+	}
+
+	public abortRound() {
+		this.round = undefined;
+		this.changed();
+	}
+
+	public castVote(user: JiraUser, vote: string) {
+		if(!this.round) {
+			throw new Error("No round");
+		} else if(this.round.options.indexOf(vote) < 0) {
+			throw new Error("Invalid vote");
+		} else if(!this.members.some(member => member.key == user.key)) {
+			throw new Error("Not a member of the session");
+		}
+		this.round.votes[user.key] = vote;
+		this.changed();
+	}
+
+	public retractVote(user: JiraUser) {
+		if(!this.round) {
+			throw new Error("No round");
+		}
+		delete this.round.votes[user.key];
+		this.changed();
+	}
+
 	private changed() {
 		this.sessions.emit('session-changed', this);
 	}
 
 	public toJson(): SessionJson {
-		const { id, name, creator, created, members } = this;
+		const { id, name, owner, created, members } = this;
 		return {
-			id, name, creator, members,
+			id, name, owner, members,
 			created: created.toJSON(),
 		};
 	}
 
-	// public toFullJson(): SessionFullJson {}
+	public toFullJson(): SessionFullJson {
+		return {
+			...this.toJson(),
+			round: this.round,
+		};
+	}
 }
 
 export default class Sessions extends EventEmitter {
@@ -53,6 +101,8 @@ export default class Sessions extends EventEmitter {
 				//TODO Delete old sessions
 			}
 		}, 60 * 1000);
+
+		this.on('session-changed', () => this.sessionsChanged());
 	}
 
 	public get(id: string): Session | undefined {
@@ -90,6 +140,10 @@ export default class Sessions extends EventEmitter {
 
 	public hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 		socket.on('getSessions', cb => cb(this.getAll().map(session => session.toJson())));
+		socket.on('getSession', (id, cb) => {
+			const session = this.get(id);
+			cb(session ? session.toFullJson() : { error: "Session not found" });
+		});
 		socket.on('createSession', (name, cb) => {
 			const user: JiraUser = socket.data.user;
 			if(!user) {
@@ -105,6 +159,53 @@ export default class Sessions extends EventEmitter {
 			if(socket.data.session && socket.data.user) {
 				socket.data.session.removeMember(socket.data.user);
 			}
+		});
+
+		function getSessionAndUser(errorCb: (err: ErrorObject) => void, mustBeOwner: boolean, mustHaveRound: boolean, cb: (session: Session, user: JiraUser) => void) {
+			const session: Session = socket.data.session;
+			const user: JiraUser = socket.data.user;
+			if(!session) {
+				errorCb({ error: "No session" });
+			} else if(!user) {
+				errorCb({ error: "No user" });
+			} else if(mustBeOwner && session.owner.key != user.key) {
+				errorCb({ error: "Not session owner" });
+			} else if(mustHaveRound && !session.round) {
+				errorCb({ error: "No round" });
+			} else {
+				try {
+					cb(session, user);
+				} catch(e) {
+					errorCb({ error: `${e}` });
+				}
+			}
+		}
+
+		socket.on('startRound', (description, options, cb) => {
+			getSessionAndUser(cb, true, false, (session, user) => {
+				session.startRound(description, options);
+				cb(undefined);
+			});
+		});
+		socket.on('endRound', cb => {
+			getSessionAndUser(cb, true, true, (session, user) => {
+				session.endRound();
+			});
+		});
+		socket.on('abortRound', cb => {
+			getSessionAndUser(cb, true, true, (session, user) => {
+				session.abortRound();
+			});
+		});
+		socket.on('castVote', (vote, cb) => {
+			getSessionAndUser(cb, false, true, (session, user) => {
+				session.castVote(user, vote);
+			});
+		});
+		socket.on('retractVote', cb => {
+			getSessionAndUser(cb, false, true, (session, user) => {
+				session.retractVote(user);
+			});
 		});
 	}
 

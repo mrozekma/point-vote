@@ -4,7 +4,7 @@ import JiraApi from 'jira-client';
 // @ts-ignore
 import { OAuth } from 'oauth';
 
-import { ClientToServer, JiraUser, ServerToClient, Session } from '../events';
+import { ClientToServer, JiraUser, ServerToClient } from '../events';
 import { Socket } from 'socket.io';
 
 interface OAuthError {
@@ -12,17 +12,33 @@ interface OAuthError {
 	data: string;
 }
 
+// http://localhost:8080/plugins/servlet/applinks/listApplicationLinks
+// Enter URL
+// Click "Create new link"
+// Ignore no response warning and click "Continue"
+
+// Application Name: Point Vote
+// Application Type: Generic Application
+// Consumer key: <key>
+// Create incoming link: Yes
+// "-" for the rest
+// Click "Continue"
+
+// Consumer Key: <key>
+// Consumer Name: Point Vote
+// Public Key: <file>
+
 const JIRA_URL = {
 	protocol: 'http',
 	host: 'localhost',
 	port: 8080,
 };
-const CONSUMER_KEY = 'asdf';
+const CONSUMER_KEY = 'bjd8RUA1kgn@vbv_nxu';
 
 const jiraUrlStr = `${JIRA_URL.protocol}://${JIRA_URL.host}:${JIRA_URL.port}`;
 const privKey = fs.readFileSync('oauth/jira_privatekey.pem', 'utf8');
 
-export function hookSocket(socket: Socket<ClientToServer, ServerToClient>, onAuth?: (user: JiraUser) => void) {
+export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLogin', (originUrl, cb) => {
 		const oauth = new OAuth(`${jiraUrlStr}/plugins/servlet/oauth/request-token`, `${jiraUrlStr}/plugins/servlet/oauth/access-token`, CONSUMER_KEY, privKey, '1.0', originUrl, 'RSA-SHA1');
 		oauth.getOAuthRequestToken((err: OAuthError | null, token: string, secret: string) => {
@@ -60,6 +76,9 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>, onAut
 		});
 		try {
 			const info = await jira.getCurrentUser();
+			if(typeof info === 'string') {
+				throw new Error(info);
+			}
 			const user: JiraUser = {
 				key: info.key,
 				name: info.name,
@@ -79,8 +98,6 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>, onAut
 				})(),
 			};
 			socket.data.user = user;
-			console.log('auth', socket.id, user);
-			onAuth?.(user);
 			cb(user);
 		} catch(e) {
 			socket.data.user = undefined;

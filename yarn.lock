@@ -2597,6 +2597,11 @@ undefsafe@^2.0.5:
   resolved "https://registry.yarnpkg.com/undefsafe/-/undefsafe-2.0.5.tgz#38733b9327bdcd226db889fb723a6efd162e6e2c"
   integrity sha512-WxONCrssBM8TSPRqN5EmsjVrsv4A8X12J4ArBiiayv3DyyG3ZlIg6yysuuSYdZsVz3TKcTg2fd//Ujd4CHV1iA==
 
+uniqolor@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/uniqolor/-/uniqolor-1.0.2.tgz#c9ce7e32eb72c22885a7c1e96ed5b5062cce8a17"
+  integrity sha512-uNU+1iuhQioRZBG8TyjC+dFRuVmnZ6vp29ukoZjhrX3U5TP8onSr6S+qnTNAOnzlakmHWB0r/MPeMfMJ3+T7kg==
+
 unique-string@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/unique-string/-/unique-string-2.0.0.tgz#39c6451f81afb2749de2b233e3f7c5e8843bd89d"
