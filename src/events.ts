@@ -4,7 +4,7 @@ export interface ErrorObject {
 }
 
 export function isErrorObject(obj: any): obj is ErrorObject {
-	return (typeof obj.error) === 'string';
+	return (typeof obj?.error) === 'string';
 }
 
 type Callback<T> = (arg: T | ErrorObject) => void;
@@ -50,7 +50,7 @@ export interface SessionFullJson extends SessionJson {
 }
 
 export interface ClientToServer {
-	setPathname(pathname: string): void;
+	setPathname(pathname: string, cb: Callback<undefined>): void;
 
 	jiraLogin(originUrl: string, cb: Callback<JiraLogin>): void;
 	jiraLoginFinish(reqToken: string, reqSecret: string, verifier: string, cb: Callback<JiraAuth>): void;

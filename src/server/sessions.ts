@@ -183,6 +183,10 @@ export default class Sessions extends EventEmitter {
 
 		socket.on('startRound', (description, options, cb) => {
 			getSessionAndUser(cb, true, false, (session, user) => {
+				description = description.trim() || 'Vote';
+				if(new Set(options).size < 2) {
+					throw new Error("Need at least two options to vote on");
+				}
 				session.startRound(description, options);
 				cb(undefined);
 			});
