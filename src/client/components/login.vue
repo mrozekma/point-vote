@@ -72,7 +72,9 @@
 
 <template>
 	<div>
-		<a-button type="primary" @click="jiraLogin" :loading="loading">Jira Login</a-button>
+		<a-alert v-if="store.server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
+		<a-spin v-else-if="!store.server.connected" />
+		<a-button v-else type="primary" @click="jiraLogin" :loading="loading">Jira Login</a-button>
 		<a-alert v-if="error" message="Jira error" :description="error" type="error" show-icon />
 	</div>
 </template>

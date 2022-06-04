@@ -1,10 +1,13 @@
 <script lang="ts" setup>
-	import { message } from 'ant-design-vue';
-import { EventNames, EventParams } from 'socket.io/dist/typed-events';
-	import { computed, reactive, ref } from 'vue';
+	import { message, TableColumnProps } from 'ant-design-vue';
+	import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+	import { computed, reactive, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
 
-	import { ClientToServer, ErrorObject, isErrorObject, SessionFullJson } from '../../events';
+	import PvUser from '../components/user.vue';
+	import PvVoteTag from '../components/vote-tag.vue';
+
+	import { ClientToServer, ErrorObject, isErrorObject, JiraUser, SessionFullJson } from '../../events';
 	import useStore from '../store';
 
 	const route = useRoute();
@@ -47,47 +50,156 @@ import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 		error: undefined as string | undefined,
 	});
 
-	// Given a function type like:
-	//     (a: A, b: B, cb: (result: R | ErrorObject) => void) => void
-	// removes the error possibility from the callback parameter:
-	//     (a: A, b: B, cb: (result: R) => void) => void
-	type RemoveErrorFromCallbackParam<Params extends readonly any[]> = {
-		[K in keyof Params]: Params[K] extends (arg: infer T | ErrorObject) => void ? (arg: T) => void : Params[K];
-	}
+	type RemoveCallbackParam<T>    = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
+	type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? Promise<V> : never;
 
-	// Wrapper around store.socket.emit() that turns an error response into a popup and forwards a successful response to the callback.
+	// Wrapper around store.socket.emit() that converts the callback into a Promise, and shows a popup when the response is an error.
 	// This does assume the callback is last, the typing doesn't enforce it.
-	//@ts-ignore Typescript is erroring with "a rest parameter must be of an array type". Don't know why, but works fine
-	function sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveErrorFromCallbackParam<EventParams<ClientToServer, Ev>>) {
+	function sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveCallbackParam<EventParams<ClientToServer, Ev>>): PromisifyCallbackParam<EventParams<ClientToServer, Ev>> {
 		const arr = params as any;
-		const cb = arr.pop();
-		arr.push((res: any) => {
-			if(isErrorObject(res)) {
-				message.error(res.error, 5);
-			} else {
-				cb(res);
-			}
+		//@ts-ignore
+		return new Promise((resolve, reject) => {
+			// Add the missing callback argument and have it resolve/reject the promise depending on the value it's called with
+			arr.push((res: any) => {
+				if(isErrorObject(res)) {
+					message.error(res.error, 5);
+					reject(res.error);
+				} else {
+					resolve(res);
+				}
+			});
+			store.socket.emit(event, ...arr);
 		});
-		store.socket.emit(event, ...arr);
 	}
 
 	function startRound() {
 		newRound.loading = true;
 		newRound.error = undefined;
-		sendServer('startRound', newRound.description, newRound.options, () => {
-			//TODO Need a way to run this on error (return a promise from sendServer)
-			newRound.loading = false;
-			newRound.description = '';
-		});
+		sendServer('startRound', newRound.description, newRound.options)
+			.then(() => {
+				newRound.description = '';
+			})
+			.finally(() => {
+				newRound.loading = false;
+			});
 	}
 
 	function endRound() {
-		store.socket.emit('endRound', res => {});
+		sendServer('endRound');
+	}
+
+	function clearRound() {
+		sendServer('clearRound');
+	}
+
+	function restartRound() {
+		if(isErrorObject(session.value) || !session.value.round) {
+			throw new Error("No round");
+		}
+		const { description, options } = session.value.round;
+		sendServer('startRound', description, options);
 	}
 
 	let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
 	store.socket.on('updateSession', val => session.value = val);
 	let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
+	let myVote = ref<false | string | undefined>();
+
+	watch(session, newVal => {
+		if(myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
+			myVote.value = undefined;
+		}
+	});
+
+	interface Vote {
+		user: JiraUser;
+		vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
+	}
+
+	const memberVotesColumns = computed<TableColumnProps<Vote>[]>(() => {
+		const rtn: TableColumnProps<Vote>[] = [{
+			dataIndex: 'user',
+			title: 'Member',
+			defaultSortOrder: 'ascend',
+			sorter: {
+				compare(a, b) {
+					return a.user.displayName.localeCompare(b.user.displayName);
+				},
+			}
+		}];
+		if(!isErrorObject(session.value) && session.value.round) {
+			rtn.push({
+				dataIndex: 'vote',
+				title: 'Vote',
+				width: 300,
+			});
+		}
+		return rtn;
+	});
+
+	let memberVotesData = computed<Vote[]>(() => {
+		if(isErrorObject(session.value) || !session.value.round) {
+			return [];
+		}
+		const round = session.value.round;
+		return session.value.members.map(user => ({
+			user,
+			vote: round?.votes[user.key],
+		}));
+	});
+
+	interface VoteMembers {
+		vote: false | string | undefined;
+		voters: JiraUser[];
+	}
+
+	const voteMembersColumns: TableColumnProps[] = [{
+		dataIndex: 'vote',
+		title: 'Vote',
+		width: 300,
+	}, {
+		dataIndex: 'voters',
+		title: 'Voters',
+	}];
+
+	let voteMembersData = computed<VoteMembers[]>(() => {
+		if(isErrorObject(session.value) || !session.value.round || !session.value.round.done) {
+			return [];
+		}
+		const rtn: VoteMembers[] = [];
+		function process(option: string | false | undefined) {
+			const voters: JiraUser[] = [];
+			for(const vote of memberVotesData.value) {
+				if(vote.vote === option) {
+					voters.push(vote.user);
+				}
+			}
+			if(voters.length > 0) {
+				rtn.push({
+					vote: option,
+					voters,
+				});
+			}
+		}
+		for(const option of session.value.round.options) {
+			process(option);
+		}
+		process(false); // Abstain
+		process(undefined); // No vote
+		return rtn;
+	});
+
+	function castVote(vote: string | false) {
+		if(isErrorObject(session.value) || !session.value.round) {
+			throw new Error("No round");
+		}
+		if(vote === myVote.value) {
+			// Clicked their current vote again; retract it
+			sendServer('retractVote').then(() => myVote.value = undefined);
+		} else {
+			sendServer('castVote', vote).then(() => myVote.value = vote);
+		}
+	}
 </script>
 
 <template>
@@ -96,14 +208,50 @@ import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 		<h1>{{ session.name }}</h1>
 
 		<template v-if="session.round">
-			{{ session.round }}
-			<template v-if="isOwner">
-				<a-button @click="endRound">End voting</a-button>
-				<a-button type="danger" @click="abortRound">Cancel round</a-button>
-			</template>
+			<div class="description">
+				{{ session.round.description }}
+			</div>
+			<div class="button-bar">
+				<a-button v-for="option in session.round.options" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
+				<a-button :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
+			</div>
+			<div v-if="isOwner" class="button-bar">
+				<template v-if="!session.round.done">
+					<a-button type="danger" @click="endRound">End voting</a-button>
+					<a-button type="danger" @click="clearRound">Cancel round</a-button>
+				</template>
+				<template v-else>
+					<a-button type="danger" @click="restartRound">Repeat round</a-button>
+					<a-button type="danger" @click="clearRound">Clear results</a-button>
+				</template>
+			</div>
 		</template>
-
 		<a-alert v-else type="info" message="Waiting for next round" show-icon />
+
+		<div class="vote-tables">
+			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false">
+				<template #bodyCell="{ column, text, record }">
+					<template v-if="column.dataIndex == 'user'">
+						<pv-user v-bind="text" :tick="record.vote !== undefined" />
+					</template>
+					<template v-else-if="column.dataIndex == 'vote'">
+						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
+					</template>
+				</template>
+			</a-table>
+			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false">
+				<template #bodyCell="{ column, text, record }">
+					<template v-if="column.dataIndex == 'vote'">
+						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
+					</template>
+					<template v-else-if="column.dataIndex == 'voters'">
+						<div class="voters">
+							<pv-user v-for="voter in text" v-bind="voter" icon-only />
+						</div>
+					</template>
+				</template>
+			</a-table>
+		</div>
 
 		<template v-if="isOwner">
 			<h2>Next round</h2>
@@ -120,6 +268,34 @@ import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 			<a-button type="primary" @click="startRound" :loading="newRound.loading">Start</a-button>
 			<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
 		</template>
-		<i class="fas fa-check"></i>
 	</template>
 </template>
+
+<style lang="less" scoped>
+	.description {
+		border: 1px solid #aaa;
+		border-radius: 10px;
+		margin: 10px 0;
+		padding: 10px;
+	}
+
+	.button-bar {
+		margin: 5px 0;
+		display: flex;
+		gap: 5px;
+	}
+	.vote-tables {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+
+	.voters {
+		display: flex;
+		gap: 5px;
+	}
+
+	.ant-alert {
+		margin: 5px 0;
+	}
+</style>

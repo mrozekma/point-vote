@@ -42,7 +42,7 @@ export interface Round {
 	// jiraData
 	options: string[];
 	done: boolean;
-	votes: { [JiraUserId: string]: string };
+	votes: { [JiraUserId: string]: string | boolean }; // True for a hidden vote, false for abstentions
 }
 
 export interface SessionFullJson extends SessionJson {
@@ -50,7 +50,7 @@ export interface SessionFullJson extends SessionJson {
 }
 
 export interface ClientToServer {
-	setPathname(pathname: string, cb: Callback<undefined>): void;
+	setPathname(pathname: string): void;
 
 	jiraLogin(originUrl: string, cb: Callback<JiraLogin>): void;
 	jiraLoginFinish(reqToken: string, reqSecret: string, verifier: string, cb: Callback<JiraAuth>): void;
@@ -62,8 +62,8 @@ export interface ClientToServer {
 
 	startRound(description: string, options: string[], cb: Callback<undefined>): void;
 	endRound(cb: Callback<undefined>): void;
-	abortRound(cb: Callback<undefined>): void;
-	castVote(vote: string, cb: Callback<undefined>): void;
+	clearRound(cb: Callback<undefined>): void;
+	castVote(vote: string | false, cb: Callback<undefined>): void;
 	retractVote(cb: Callback<undefined>): void;
 }
 

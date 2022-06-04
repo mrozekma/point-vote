@@ -17,7 +17,7 @@ io.on('connection', socket => {
 
 	socket.on('setPathname', pathname => {
 		console.log('setPathname', pathname, socket.data);
-		if(socket.data.session) {
+		if(socket.data.session && socket.data.user) {
 			(socket.data.session as Session).removeMember(socket.data.user);
 			socket.data.session = undefined;
 		}

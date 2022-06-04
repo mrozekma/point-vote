@@ -94,10 +94,12 @@
 
 	<h1>Join session</h1>
 	<a-alert v-if="sessionsError" message="Sessions error" :description="sessionsError" type="error" show-icon />
-	<a-table v-else :data-source="sessions" :columns="sessionsColumns" :custom-row="customRow">
+	<a-table v-else :data-source="sessions" :columns="sessionsColumns" :custom-row="customRow" :pagination="false">
 		<template #bodyCell="{ column, text }">
 			<template v-if="column.dataIndex == 'members'">
-				<pv-user v-for="user in text" v-bind="user" />
+				<div class="users">
+					<pv-user v-for="user in text" v-bind="user" icon-only />
+				</div>
 			</template>
 		</template>
 	</a-table>
@@ -106,5 +108,10 @@
 <style lang="less" scoped>
 	.ant-table-wrapper :deep(.ant-table-row) {
 		cursor: pointer;
+	}
+
+	.users {
+		display: flex;
+		gap: 5px;
 	}
 </style>
