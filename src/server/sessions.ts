@@ -9,10 +9,13 @@ interface JiraMultiUser extends JiraUser {
 	count: number;
 }
 
+const REMOVE_EMPTY_SESSION_MS = 60 * 1000;
+
 export class Session {
 	public readonly created: Date;
 	public members: JiraMultiUser[];
 	public round: Round | undefined;
+	private removeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
 	constructor(private readonly sessions: Sessions, public readonly id: string, public readonly name: string, public readonly owner: JiraUser) {
 		this.created = new Date();
@@ -28,6 +31,10 @@ export class Session {
 				...user,
 				count: 1,
 			});
+			if(this.removeTimer) {
+				clearTimeout(this.removeTimer);
+				this.removeTimer = undefined;
+			}
 		}
 		this.changed();
 	}
@@ -37,6 +44,9 @@ export class Session {
 		if(idx >= 0) {
 			if(--this.members[idx].count == 0) {
 				this.members.splice(idx, 1);
+				if(this.members.length == 0) {
+					this.removeTimer = setTimeout(() => this.sessions.remove(this), REMOVE_EMPTY_SESSION_MS);
+				}
 			}
 			this.changed();
 		}
@@ -137,13 +147,6 @@ export default class Sessions extends EventEmitter {
 	constructor() {
 		super();
 		this.sessions = new Map();
-
-		setInterval(() => {
-			for(const session of this.sessions) {
-				//TODO Delete old sessions
-			}
-		}, 60 * 1000);
-
 		this.on('session-changed', () => this.sessionsChanged());
 	}
 
@@ -179,6 +182,16 @@ export default class Sessions extends EventEmitter {
 		this.sessions.set(id, session);
 		this.sessionsChanged();
 		return session;
+	}
+
+	public remove(session: Session) {
+		// Double-check that the session is empty
+		if(session.members.length > 0) {
+			throw new Error("Can't remove non-empty session");
+		}
+		if(this.sessions.delete(session.id)) {
+			this.sessionsChanged();
+		}
 	}
 
 	public hookSocket(socket: Socket<ClientToServer, ServerToClient>) {

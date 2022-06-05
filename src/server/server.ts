@@ -13,10 +13,7 @@ const io = new Server<ClientToServer, ServerToClient>({
 });
 
 io.on('connection', socket => {
-	console.log('connect', socket.id);
-
 	socket.on('setPathname', pathname => {
-		console.log('setPathname', pathname, socket.data);
 		if(socket.data.session && socket.data.user) {
 			(socket.data.session as Session).removeMember(socket.data.user);
 			socket.data.session = undefined;
@@ -33,7 +30,6 @@ io.on('connection', socket => {
 			socket.join('home');
 		} else {
 			const session = sessions.get(pathname.substring(1));
-			console.log('session', session?.id);
 			if(session) {
 				socket.data.session = session;
 				socket.join(`session/${session.id}`);
@@ -56,3 +52,4 @@ sessions.on('session-changed', session => {
 });
 
 io.listen(3001);
+console.log('Ready');
