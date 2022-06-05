@@ -2,7 +2,8 @@ import { EventEmitter } from 'events';
 import randomstring from 'randomstring';
 import { Socket } from 'socket.io';
 
-import { ClientToServer, ErrorObject, JiraUser, Round, ServerToClient, SessionFullJson, SessionJson } from '../events';
+import { ClientToServer, ErrorObject, isErrorObject, JiraAuth, JiraIssue, JiraUser, Round, ServerToClient, SessionFullJson, SessionJson } from '../events';
+import { getJiraIssue, setJiraStoryPoints } from './jira';
 
 interface JiraMultiUser extends JiraUser {
 	count: number;
@@ -41,9 +42,9 @@ export class Session {
 		}
 	}
 
-	public startRound(description: string, options: string[]) {
+	public startRound(description: string, options: string[], jiraIssue: JiraIssue | ErrorObject | undefined) {
 		this.round = {
-			description, options,
+			description, options, jiraIssue,
 			done: false,
 			votes: {},
 		};
@@ -84,6 +85,17 @@ export class Session {
 			throw new Error("Round is over");
 		}
 		delete this.round.votes[user.key];
+		this.changed();
+	}
+
+	public async setStoryPoints(points: number, auth: JiraAuth): Promise<void> {
+		if(!this.round) {
+			throw new Error("No round");
+		} else if(!this.round.jiraIssue || isErrorObject(this.round.jiraIssue)) {
+			throw new Error("No JIRA issue");
+		}
+		await setJiraStoryPoints(auth, this.round.jiraIssue.key, points);
+		this.round.jiraIssue.storyPoints = points;
 		this.changed();
 	}
 
@@ -192,7 +204,7 @@ export default class Sessions extends EventEmitter {
 			}
 		});
 
-		function getSessionAndUser(errorCb: (err: ErrorObject) => void, mustBeOwner: boolean, mustHaveRound: boolean, cb: (session: Session, user: JiraUser) => void) {
+		async function getSessionAndUser(errorCb: (err: ErrorObject) => void, mustBeOwner: boolean, mustHaveRound: boolean, cb: (session: Session, user: JiraUser) => void) {
 			const session: Session = socket.data.session;
 			const user: JiraUser = socket.data.user;
 			if(!session) {
@@ -205,20 +217,30 @@ export default class Sessions extends EventEmitter {
 				errorCb({ error: "No round" });
 			} else {
 				try {
-					cb(session, user);
+					await cb(session, user);
 				} catch(e) {
 					errorCb({ error: `${e}` });
 				}
 			}
 		}
 
-		socket.on('startRound', (description, options, cb) => {
-			getSessionAndUser(cb, true, false, (session, user) => {
+		socket.on('startRound', (description, options, jiraAuth, cb) => {
+			getSessionAndUser(cb, true, false, async (session, user) => {
 				description = description.trim() || 'Vote';
 				if(new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
 				}
-				session.startRound(description, options);
+				let jiraIssue: JiraIssue | ErrorObject | undefined;
+				if(jiraAuth) {
+					try {
+						jiraIssue = await getJiraIssue(jiraAuth, description);
+					} catch(e) {
+						jiraIssue = {
+							error: `${e}`,
+						};
+					}
+				}
+				session.startRound(description, options, jiraIssue);
 				cb(undefined);
 			});
 		});
@@ -243,6 +265,13 @@ export default class Sessions extends EventEmitter {
 		socket.on('retractVote', cb => {
 			getSessionAndUser(cb, false, true, (session, user) => {
 				session.retractVote(user);
+				cb(undefined);
+			});
+		});
+
+		socket.on('setStoryPoints', (points, jiraAuth, cb) => {
+			getSessionAndUser(cb, true, true, async (session, user) => {
+				await session.setStoryPoints(points, jiraAuth);
 				cb(undefined);
 			});
 		});

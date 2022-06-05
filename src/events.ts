@@ -37,9 +37,16 @@ export interface SessionJson {
 	members: JiraUser[];
 }
 
+export interface JiraIssue {
+	key: string;
+	url: string;
+	descriptionHtml: string;
+	storyPoints?: number;
+}
+
 export interface Round {
 	description: string;
-	// jiraData
+	jiraIssue: JiraIssue | ErrorObject | undefined;
 	options: string[];
 	done: boolean;
 	votes: { [JiraUserId: string]: string | boolean }; // True for a hidden vote, false for abstentions
@@ -60,11 +67,12 @@ export interface ClientToServer {
 	getSession(id: string, cb: Callback<SessionFullJson>): void;
 	getSessions(cb: Callback<SessionJson[]>): void;
 
-	startRound(description: string, options: string[], cb: Callback<undefined>): void;
+	startRound(description: string, options: string[], jiraAuth: JiraAuth | undefined, cb: Callback<undefined>): void;
 	endRound(cb: Callback<undefined>): void;
 	clearRound(cb: Callback<undefined>): void;
 	castVote(vote: string | false, cb: Callback<undefined>): void;
 	retractVote(cb: Callback<undefined>): void;
+	setStoryPoints(points: number, jiraAuth: JiraAuth, cb: Callback<undefined>): void;
 }
 
 export interface ServerToClient {

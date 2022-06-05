@@ -4,7 +4,7 @@ import JiraApi from 'jira-client';
 // @ts-ignore
 import { OAuth } from 'oauth';
 
-import { ClientToServer, JiraUser, ServerToClient } from '../events';
+import { ClientToServer, JiraAuth, JiraIssue, JiraUser, ServerToClient } from '../events';
 import { Socket } from 'socket.io';
 
 interface OAuthError {
@@ -28,15 +28,61 @@ interface OAuthError {
 // Consumer Name: Point Vote
 // Public Key: <file>
 
+//TODO Pull these into a config file
 const JIRA_URL = {
 	protocol: 'http',
 	host: 'localhost',
 	port: 8080,
 };
 const CONSUMER_KEY = 'bjd8RUA1kgn@vbv_nxu';
+const STORY_POINTS_FIELD_NAME = 'customfield_10111';
 
-const jiraUrlStr = `${JIRA_URL.protocol}://${JIRA_URL.host}:${JIRA_URL.port}`;
+const jiraUrlStr = (() => {
+	const { protocol, host, port } = JIRA_URL;
+	const portSuffix = (protocol == 'http' && port == 80) ? '' : (protocol == 'https' && port == 443) ? '' : `:${port}`;
+	return `${protocol}://${host}${portSuffix}`;
+})();
 const privKey = fs.readFileSync('oauth/jira_privatekey.pem', 'utf8');
+
+function makeJiraApi(auth: JiraAuth): JiraApi {
+	const { protocol, host, port } = JIRA_URL;
+	return new JiraApi({
+		protocol, host,
+		port: `${port}`,
+		oauth: {
+			consumer_key: CONSUMER_KEY,
+			consumer_secret: privKey,
+			access_token: auth.token,
+			access_token_secret: auth.secret,
+			signature_method: 'RSA-SHA1',
+		},
+	});
+}
+
+const jiraIssueRe = new RegExp(`^(?:(?:${JIRA_URL.protocol}://)?${JIRA_URL.host}.*/browse/)?([A-Za-z0-9-]+)$`);
+export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<JiraIssue> {
+	const match = key_or_url.match(jiraIssueRe);
+	if(!match) {
+		throw new Error("Couldn't find JIRA key or URL");
+	}
+	const key = match[1];
+	const jira = makeJiraApi(auth);
+	const issue = await jira.getIssue(key, undefined, 'renderedFields');
+	return {
+		key,
+		url: `${jiraUrlStr}/browse/${key}`,
+		descriptionHtml: issue.renderedFields.description,
+		storyPoints: issue.fields[STORY_POINTS_FIELD_NAME] ?? undefined,
+	};
+}
+
+export async function setJiraStoryPoints(auth: JiraAuth, key: string, points: number): Promise<void> {
+	const jira = makeJiraApi(auth);
+	const res = await jira.updateIssue(key, { fields: { [STORY_POINTS_FIELD_NAME]: points } });
+	if(res?.errors?.[STORY_POINTS_FIELD_NAME]) {
+		throw new Error(res.errors[STORY_POINTS_FIELD_NAME]);
+	}
+}
 
 export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLogin', (originUrl, cb) => {
@@ -62,19 +108,8 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	});
 
 	socket.on('jiraGetUser', async (auth, cb) => {
-		const { protocol, host, port } = JIRA_URL;
-		const jira = new JiraApi({
-			protocol, host,
-			port: `${port}`,
-			oauth: {
-				consumer_key: CONSUMER_KEY,
-				consumer_secret: privKey,
-				access_token: auth.token,
-				access_token_secret: auth.secret,
-				signature_method: 'RSA-SHA1',
-			},
-		});
 		try {
+			const jira = makeJiraApi(auth);
 			const info = await jira.getCurrentUser();
 			if(typeof info === 'string') {
 				throw new Error(info);

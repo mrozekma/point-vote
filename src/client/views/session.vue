@@ -45,6 +45,7 @@
 
 	const newRound = reactive({
 		description: '',
+		jiraIssue: true,
 		options: [ ...options[0].options ],
 		loading: false,
 		error: undefined as string | undefined,
@@ -75,7 +76,7 @@
 	function startRound() {
 		newRound.loading = true;
 		newRound.error = undefined;
-		sendServer('startRound', newRound.description, newRound.options)
+		sendServer('startRound', newRound.description, newRound.options, newRound.jiraIssue ? store.jira!.auth : undefined)
 			.then(() => {
 				newRound.description = '';
 			})
@@ -96,8 +97,8 @@
 		if(isErrorObject(session.value) || !session.value.round) {
 			throw new Error("No round");
 		}
-		const { description, options } = session.value.round;
-		sendServer('startRound', description, options);
+		const { description, options, jiraIssue } = session.value.round;
+		sendServer('startRound', description, options, jiraIssue ? store.jira!.auth : undefined);
 	}
 
 	let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
@@ -214,6 +215,18 @@
 			sendServer('castVote', vote).then(() => myVote.value = vote);
 		}
 	}
+
+	function setStoryPoints(points: number) {
+		if(isErrorObject(session.value) || !session.value.round) {
+			throw new Error("No round");
+		} else if(!session.value.round.jiraIssue || isErrorObject(session.value.round.jiraIssue)) {
+			throw new Error("No JIRA issue");
+		}
+		const key = session.value.round.jiraIssue.key;
+		sendServer('setStoryPoints', points, store.jira!.auth).then(() => {
+			message.success(`Set ${key}'s story points to ${points}`, 5);
+		});
+	}
 </script>
 
 <template>
@@ -224,6 +237,14 @@
 		<template v-if="session.round">
 			<div class="description">
 				{{ session.round.description }}
+				<a-card v-if="session.round.jiraIssue" title="Jira description" size="small">
+					<a-alert v-if="isErrorObject(session.round.jiraIssue)" type="error" :message="session.round.jiraIssue.error" />
+					<div v-else v-html="session.round.jiraIssue.descriptionHtml" />
+					<template #extra>
+						<a-tag v-if="!isErrorObject(session.round.jiraIssue) && session.round.jiraIssue.storyPoints !== undefined">{{ session.round.jiraIssue.storyPoints }}</a-tag>
+						<a-button v-if="!isErrorObject(session.round.jiraIssue)" :href="session.round.jiraIssue.url" target="_blank" size="small"><i class="fab fa-jira"></i></a-button>
+					</template>
+				</a-card>
 			</div>
 			<div class="button-bar">
 				<a-button v-for="option in session.round.options" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
@@ -260,6 +281,9 @@
 						<a-tooltip v-if="record.isPlurality" placement="bottom" title="Plurality">
 							<i class="fas fa-medal"></i>
 						</a-tooltip>
+						<a-tooltip v-if="isOwner && session.round!.jiraIssue && typeof text === 'string' && /^[0-9]+$/.test(text)" placement="bottom" title="Set the issue's story points to this value">
+							<a-button size="small" class="push-to-jira" @click="setStoryPoints(parseInt(text))"><i class="fas fa-arrow-right"></i><i class="fab fa-jira"></i></a-button>
+						</a-tooltip>
 					</template>
 					<template v-else-if="column.dataIndex == 'voters'">
 						<div class="voters">
@@ -271,21 +295,25 @@
 		</div>
 
 		<template v-if="isOwner">
-			<h2>Next round</h2>
-			<a-form class="two-col" autocomplete="off" @finish="startRound">
-				<a-form-item label="Description">
-					<a-input v-model:value="newRound.description" placeholder="JIRA id, etc." />
-				</a-form-item>
-				<a-form-item label="Options">
-					<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />
-					<div class="button-bar">
-						<a-button v-for="set in options" @click="newRound.options = [ ...set.options ]">{{ set.name }}</a-button>
-						<a-button @click="newRound.options = []">Clear</a-button>
-					</div>
-				</a-form-item>
-			</a-form>
-			<a-button type="primary" @click="startRound" :loading="newRound.loading">Start</a-button>
-			<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
+			<a-card title="Next round" size="small" class="new-round">
+				<a-form class="two-col" autocomplete="off" @finish="startRound">
+					<a-form-item label="Description">
+						<a-input v-model:value="newRound.description" placeholder="JIRA key, etc." @pressEnter="startRound" />
+					</a-form-item>
+					<a-form-item label="JIRA">
+						<a-switch v-model:checked="newRound.jiraIssue" />Show JIRA issue details (description must be a JIRA key or URL).
+					</a-form-item>
+					<a-form-item label="Options">
+						<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />
+						<div class="button-bar">
+							<a-button v-for="set in options" @click="newRound.options = [ ...set.options ]">{{ set.name }}</a-button>
+							<a-button @click="newRound.options = []">Clear</a-button>
+						</div>
+					</a-form-item>
+				</a-form>
+				<a-button type="primary" htmlType="submit" @click="startRound" :loading="newRound.loading">Start</a-button>
+				<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
+			</a-card>
 		</template>
 	</template>
 </template>
@@ -296,6 +324,9 @@
 		border-radius: 10px;
 		margin: 10px 0;
 		padding: 10px;
+		.ant-card {
+			margin-top: 10px;
+		}
 	}
 
 	.button-bar {
@@ -307,6 +338,7 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 10px;
+		margin: 10px 0;
 	}
 
 	.voters {
@@ -316,5 +348,18 @@
 
 	.ant-alert {
 		margin: 5px 0;
+	}
+
+	.push-to-jira {
+		float: right;
+		> i:not(:first-child) {
+			margin-left: 2px;
+		}
+	}
+
+	.new-round {
+		.ant-switch {
+			margin-right: 10px;
+		}
 	}
 </style>
