@@ -8,7 +8,7 @@ const sessions = new Sessions();
 
 const io = new Server<ClientToServer, ServerToClient>({
 	cors: {
-		origin: 'http://localhost:3000',
+		origin: 'http://localhost:3000', //TODO Config
 	},
 });
 
@@ -51,5 +51,5 @@ sessions.on('session-changed', session => {
 	io.to(`session/${session.id}`).emit('updateSession', session.toFullJson());
 });
 
-io.listen(3001);
+io.listen(3001); //TODO Config
 console.log('Ready');
