@@ -8,6 +8,7 @@
 	const store = useStore();
 
 	const loading = ref(false);
+	const finishingLogin = ref(false);
 	const error = ref<string | undefined>(undefined);
 
 	function getCurrentUrlSansOauth(): string {
@@ -26,25 +27,31 @@
 		if(typeof query.oauth_token === 'string' && typeof query.oauth_verifier === 'string') {
 			const token = window.localStorage.getItem('jiraRequestToken');
 			const secret = window.localStorage.getItem('jiraRequestSecret');
+			finishingLogin.value = true;
+			function fail(msg: string) {
+				error.value = msg;
+				finishingLogin.value = false;
+			}
 			if(!token || !secret) {
-				error.value = "Missing Jira login data";
+				fail("Missing Jira login data");
 			} else {
 				window.localStorage.removeItem('jiraRequestToken');
 				window.localStorage.removeItem('jiraRequestSecret');
 				if(token !== query.oauth_token) {
-					error.value = "Jira login token mismatch";
+					fail("Jira login token mismatch");
 				} else if(query.oauth_verifier === 'denied') {
-					error.value = "Login rejected by user";
+					fail("Login rejected by user");
 				} else {
 					store.socket.emit('jiraLoginFinish', token, secret, query.oauth_verifier, auth => {
 						if(isErrorObject(auth)) {
-							error.value = auth.error;
+							fail(auth.error);
 						} else {
 							store.socket.emit('jiraGetUser', auth, user => {
 								if(isErrorObject(user)) {
-									error.value = user.error;
+									fail(user.error);
 								} else {
 									store.onLogin(auth, user);
+									finishingLogin.value = false;
 									window.history.replaceState(null, '', getCurrentUrlSansOauth());
 								}
 							});
@@ -74,7 +81,19 @@
 	<div>
 		<a-alert v-if="store.server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
 		<a-spin v-else-if="!store.server.connected" />
-		<a-button v-else type="primary" @click="jiraLogin" :loading="loading">Jira Login</a-button>
-		<a-alert v-if="error" message="Jira error" :description="error" type="error" show-icon />
+		<a-alert v-else-if="finishingLogin" message="Logging in" description="Finishing Jira login..." type="info" show-icon />
+		<a-card v-else title="Login" size="small" class="login-box">
+			For the moment, you must login via Jira to participate in votes. This might change in the future.
+			<a-alert v-if="error" :message="error" type="error" closable @close="error = undefined" />
+			<template #actions>
+				<a-button type="primary" @click="jiraLogin" :loading="loading">Jira Login</a-button>
+			</template>
+		</a-card>
 	</div>
 </template>
+
+<style lang="less" scoped>
+	.login-box {
+		max-width: 800px;
+	}
+</style>

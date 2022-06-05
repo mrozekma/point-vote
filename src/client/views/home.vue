@@ -79,30 +79,38 @@
 </script>
 
 <template>
-	<h1>You</h1>
-	<pv-user v-bind="store.jira!.user" size="large" />
-	<a-button type="danger" @click="logout">Logout</a-button>
+	<div class="login-info">
+		<pv-user v-bind="store.jira!.user" size="large" />
+		<a-button type="danger" size="small" @click="logout">Logout</a-button>
+	</div>
 
-	<h1>Create session</h1>
-	<a-form class="two-col" autocomplete="off" @finish="createSession">
-		<a-form-item label="Session name">
-			<a-input v-model:value="newSession.name" />
-		</a-form-item>
-	</a-form>
-	<a-button type="primary" @click="createSession" :loading="newSession.loading">Create</a-button>
-	<a-alert v-if="newSession.error" message="Error" :description="newSession.error" type="error" show-icon />
+	<div class="sections">
+		<a-card title="Create session" size="small">
+			<a-form class="two-col" autocomplete="off" @finish="createSession">
+				<a-form-item label="Session name">
+					<a-input v-model:value="newSession.name" />
+				</a-form-item>
+			</a-form>
+			<a-button type="primary" @click="createSession" :loading="newSession.loading">Create</a-button>
+			<a-alert v-if="newSession.error" message="Error" :description="newSession.error" type="error" show-icon />
+		</a-card>
 
-	<h1>Join session</h1>
-	<a-alert v-if="sessionsError" message="Sessions error" :description="sessionsError" type="error" show-icon />
-	<a-table v-else :data-source="sessions" :columns="sessionsColumns" :custom-row="customRow" :pagination="false">
-		<template #bodyCell="{ column, text }">
-			<template v-if="column.dataIndex == 'members'">
-				<div class="users">
-					<pv-user v-for="user in text" v-bind="user" icon-only />
-				</div>
-			</template>
-		</template>
-	</a-table>
+		<a-card title="Join session" size="small">
+			<a-alert v-if="sessionsError" message="Sessions error" :description="sessionsError" type="error" show-icon />
+			<a-table v-else :data-source="sessions" :columns="sessionsColumns" :custom-row="customRow" :pagination="false" :locale="{ emptyText: 'No sessions exist' }">
+				<template #bodyCell="{ column, text, record }">
+					<template v-if="column.dataIndex == 'owner'">
+						<pv-user v-bind="text" />
+					</template>
+					<template v-else-if="column.dataIndex == 'members'">
+						<div class="users">
+							<pv-user v-for="user in text" v-bind="user" icon-only />
+						</div>
+					</template>
+				</template>
+			</a-table>
+		</a-card>
+	</div>
 </template>
 
 <style lang="less" scoped>
@@ -110,6 +118,18 @@
 		cursor: pointer;
 	}
 
+	.login-info {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+		margin-bottom: 20px;
+	}
+
+	.sections {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 30px;
+	}
 	.users {
 		display: flex;
 		gap: 5px;

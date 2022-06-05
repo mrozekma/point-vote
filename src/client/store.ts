@@ -52,7 +52,16 @@ const def = defineStore('store', {
 export default function() {
 	const store = def();
 	store.socket.on('connect', () => {
-		store.server.connected = true;
+		// Wait to set server.connected until we've tried to load the login info
+		function setConnected() {
+			store.$patch({
+				server: {
+					connected: true,
+					error: undefined,
+				},
+			});
+		}
+
 		const token = window.localStorage.getItem('jiraToken');
 		const secret = window.localStorage.getItem('jiraSecret');
 		if(token && secret) {
@@ -65,11 +74,19 @@ export default function() {
 					store.jira = { auth, user };
 					store.socket.emit('setPathname', window.location.pathname);
 				}
+				setConnected();
 			});
+		} else {
+			setConnected();
 		}
 	});
 	store.socket.on('disconnect', () => {
-		store.server.connected = false;
+		store.$patch({
+			server: {
+				connected: true,
+				error: undefined,
+			},
+		});
 	});
 	store.socket.on('connect_error', e => {
 		console.error(e);

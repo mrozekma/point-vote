@@ -138,7 +138,7 @@
 	});
 
 	let memberVotesData = computed<Vote[]>(() => {
-		if(isErrorObject(session.value) || !session.value.round) {
+		if(isErrorObject(session.value)) {
 			return [];
 		}
 		const round = session.value.round;
@@ -151,6 +151,7 @@
 	interface VoteMembers {
 		vote: false | string | undefined;
 		voters: JiraUser[];
+		isPlurality: boolean;
 	}
 
 	const voteMembersColumns: TableColumnProps[] = [{
@@ -167,6 +168,7 @@
 			return [];
 		}
 		const rtn: VoteMembers[] = [];
+		let largest = 0;
 		function process(option: string | false | undefined) {
 			const voters: JiraUser[] = [];
 			for(const vote of memberVotesData.value) {
@@ -178,11 +180,23 @@
 				rtn.push({
 					vote: option,
 					voters,
+					isPlurality: false,
 				});
+				if(voters.length > largest) {
+					largest = voters.length;
+				}
 			}
 		}
 		for(const option of session.value.round.options) {
 			process(option);
+		}
+		// Checking for the plurality is done before processing abstentions/no votes so they can't win
+		if(largest > 0) {
+			for(const e of rtn) {
+				if(e.voters.length == largest) {
+					e.isPlurality = true;
+				}
+			}
 		}
 		process(false); // Abstain
 		process(undefined); // No vote
@@ -232,17 +246,20 @@
 			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false">
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'user'">
-						<pv-user v-bind="text" :tick="record.vote !== undefined" />
+						<pv-user v-bind="text" :badge="record.vote !== undefined ? 'tick' : undefined" />
 					</template>
 					<template v-else-if="column.dataIndex == 'vote'">
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
 					</template>
 				</template>
 			</a-table>
-			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false">
+			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false" :locale="{ emptyText: 'Waiting for round to end' }">
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'vote'">
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
+						<a-tooltip v-if="record.isPlurality" placement="bottom" title="Plurality">
+							<i class="fas fa-medal"></i>
+						</a-tooltip>
 					</template>
 					<template v-else-if="column.dataIndex == 'voters'">
 						<div class="voters">
@@ -261,8 +278,10 @@
 				</a-form-item>
 				<a-form-item label="Options">
 					<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />
-					<a-button v-for="set in options" @click="newRound.options = [ ...set.options ]">{{ set.name }}</a-button>
-					<a-button @click="newRound.options = []">Clear</a-button>
+					<div class="button-bar">
+						<a-button v-for="set in options" @click="newRound.options = [ ...set.options ]">{{ set.name }}</a-button>
+						<a-button @click="newRound.options = []">Clear</a-button>
+					</div>
 				</a-form-item>
 			</a-form>
 			<a-button type="primary" @click="startRound" :loading="newRound.loading">Start</a-button>

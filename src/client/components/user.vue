@@ -9,11 +9,10 @@
 		avatar?: string;
 		size?: 'default' | 'small' | 'large';
 		iconOnly?: boolean;
-		tick?: boolean;
+		badge?: 'tick' | 'user' | undefined;
 	}>(), {
 		size: 'default',
 		iconOnly: false,
-		tick: false,
 	});
 
 	const initials = computed<string>(() => {
@@ -30,9 +29,10 @@
 
 <template>
 	<div :class="[ 'user', props.size ]">
-		<component :is="props.tick ? 'a-badge' : 'div'">
+		<component :is="props.badge ? 'a-badge' : 'div'">
 			<template #count>
-				<i v-if="props.tick" class="fas fa-check-circle"></i>
+				<i v-if="props.badge === 'tick'" class="fas fa-check-circle"></i>
+				<i v-else-if="props.badge === 'user'" class="fas fa-user-circle"></i>
 			</template>
 			<component :is="props.iconOnly ? 'a-tooltip' : 'div'" placement="bottom" :title="props.displayName">
 				<a-avatar v-if="props.avatar" :size="props.size" shape="square" :src="props.avatar" />
