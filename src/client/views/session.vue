@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 	import { message, TableColumnProps } from 'ant-design-vue';
-	import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 	import { computed, reactive, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
 
@@ -9,6 +8,15 @@
 
 	import { ClientToServer, ErrorObject, isErrorObject, JiraUser, SessionFullJson } from '../../events';
 	import useStore from '../store';
+
+	// Vite refuses to let me do this:
+	//   import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+	// I get:
+	//   ERROR: [plugin: vite:dep-scan] Missing "./dist/typed-events" export in "socket.io" package
+	// So I copied the types I care about:
+	interface EventsMap { [event: string]: any; }
+	type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
+	type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
 
 	const route = useRoute();
 	const store = useStore();

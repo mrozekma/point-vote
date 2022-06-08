@@ -175,7 +175,6 @@ export default class Sessions extends EventEmitter {
 				readable: true,
 				capitalization: 'uppercase',
 			});
-			id = 'TEST' //NO
 		} while(this.sessions.has(id));
 
 		const session = new Session(this, id, name, creator);

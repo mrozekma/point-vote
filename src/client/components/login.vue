@@ -52,7 +52,7 @@
 								} else {
 									store.onLogin(auth, user);
 									finishingLogin.value = false;
-									window.history.replaceState(null, '', getCurrentUrlSansOauth());
+									window.history.replaceState(history.state, '', getCurrentUrlSansOauth());
 								}
 							});
 						}

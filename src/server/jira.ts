@@ -3,63 +3,42 @@ import fs from 'fs';
 import JiraApi from 'jira-client';
 // @ts-ignore
 import { OAuth } from 'oauth';
-
-import { ClientToServer, JiraAuth, JiraIssue, JiraUser, ServerToClient } from '../events';
 import { Socket } from 'socket.io';
+
+import config from './config';
+import { ClientToServer, JiraAuth, JiraIssue, JiraUser, ServerToClient } from '../events';
 
 interface OAuthError {
 	statusCode: number;
 	data: string;
 }
 
-// http://localhost:8080/plugins/servlet/applinks/listApplicationLinks
-// Enter URL
-// Click "Create new link"
-// Ignore no response warning and click "Continue"
+const jiraUrl = new URL(config.jira.url);
+const privKey = fs.readFileSync(config.jira.privateKey, 'utf8');
 
-// Application Name: Point Vote
-// Application Type: Generic Application
-// Consumer key: <key>
-// Create incoming link: Yes
-// "-" for the rest
-// Click "Continue"
-
-// Consumer Key: <key>
-// Consumer Name: Point Vote
-// Public Key: <file>
-
-//TODO Pull these into a config file
-const JIRA_URL = {
-	protocol: 'http',
-	host: 'localhost',
-	port: 8080,
-};
-const CONSUMER_KEY = 'bjd8RUA1kgn@vbv_nxu';
-const STORY_POINTS_FIELD_NAME = 'customfield_10111';
-
-const jiraUrlStr = (() => {
-	const { protocol, host, port } = JIRA_URL;
-	const portSuffix = (protocol == 'http' && port == 80) ? '' : (protocol == 'https' && port == 443) ? '' : `:${port}`;
-	return `${protocol}://${host}${portSuffix}`;
-})();
-const privKey = fs.readFileSync('oauth/jira_privatekey.pem', 'utf8');
+// Whee
+if(!config.jira.strictSSL) {
+	process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+}
 
 function makeJiraApi(auth: JiraAuth): JiraApi {
-	const { protocol, host, port } = JIRA_URL;
+	const { protocol, hostname, port } = jiraUrl;
 	return new JiraApi({
-		protocol, host,
-		port: `${port}`,
+		protocol,
+		host: hostname,
+		port,
 		oauth: {
-			consumer_key: CONSUMER_KEY,
+			consumer_key: config.jira.consumerKey,
 			consumer_secret: privKey,
 			access_token: auth.token,
 			access_token_secret: auth.secret,
 			signature_method: 'RSA-SHA1',
 		},
+		strictSSL: config.jira.strictSSL,
 	});
 }
 
-const jiraIssueRe = new RegExp(`^(?:(?:${JIRA_URL.protocol}://)?${JIRA_URL.host}.*/browse/)?([A-Za-z0-9-]+)$`);
+const jiraIssueRe = new RegExp(`^(?:(?:${jiraUrl.protocol}//)?${jiraUrl.host}.*/browse/)?([A-Za-z0-9-]+)$`);
 export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<JiraIssue> {
 	const match = key_or_url.match(jiraIssueRe);
 	if(!match) {
@@ -70,37 +49,49 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 	const issue = await jira.getIssue(key, undefined, 'renderedFields');
 	return {
 		key,
-		url: `${jiraUrlStr}/browse/${key}`,
+		url: `${jiraUrl}/browse/${key}`,
 		descriptionHtml: issue.renderedFields.description,
-		storyPoints: issue.fields[STORY_POINTS_FIELD_NAME] ?? undefined,
+		storyPoints: config.jira.storyPointsFieldName ? issue.fields[config.jira.storyPointsFieldName] ?? undefined : undefined,
 	};
 }
 
 export async function setJiraStoryPoints(auth: JiraAuth, key: string, points: number): Promise<void> {
+	if(!config.jira.storyPointsFieldName) {
+		throw new Error("Story point field not configured");
+	}
 	const jira = makeJiraApi(auth);
-	const res = await jira.updateIssue(key, { fields: { [STORY_POINTS_FIELD_NAME]: points } });
-	if(res?.errors?.[STORY_POINTS_FIELD_NAME]) {
-		throw new Error(res.errors[STORY_POINTS_FIELD_NAME]);
+	const res = await jira.updateIssue(key, { fields: { [config.jira.storyPointsFieldName]: points } });
+	let err = res?.errors?.[config.jira.storyPointsFieldName]
+	if(err) {
+		throw new Error(err);
 	}
 }
 
 export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLogin', (originUrl, cb) => {
-		const oauth = new OAuth(`${jiraUrlStr}/plugins/servlet/oauth/request-token`, `${jiraUrlStr}/plugins/servlet/oauth/access-token`, CONSUMER_KEY, privKey, '1.0', originUrl, 'RSA-SHA1');
+		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', originUrl, 'RSA-SHA1');
 		oauth.getOAuthRequestToken((err: OAuthError | null, token: string, secret: string) => {
 			if(err) {
-				cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
+				if(err.statusCode && err.data) {
+					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
+				} else {
+					cb({ error: `${err}` });
+				}
 			} else {
-				cb({ token, secret, url: `${jiraUrlStr}/plugins/servlet/oauth/authorize?oauth_token=${token}` });
+				cb({ token, secret, url: `${jiraUrl}/plugins/servlet/oauth/authorize?oauth_token=${token}` });
 			}
 		});
 	});
 
 	socket.on('jiraLoginFinish', (token, secret, verifier, cb) => {
-		const oauth = new OAuth(`${jiraUrlStr}/plugins/servlet/oauth/request-token`, `${jiraUrlStr}/plugins/servlet/oauth/access-token`, CONSUMER_KEY, privKey, '1.0', null, 'RSA-SHA1');
+		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', null, 'RSA-SHA1');
 		oauth.getOAuthAccessToken(token, secret, verifier, (err: OAuthError | null, token: string, secret: string, results: any) => {
 			if(err) {
-				cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
+				if(err.statusCode && err.data) {
+					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
+				} else {
+					cb({ error: `${err}` });
+				}
 			} else {
 				cb({ token, secret });
 			}

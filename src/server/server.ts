@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 
+import config from './config';
 import { ClientToServer, JiraUser, ServerToClient } from '../events';
 import { hookSocket as jiraHookSocket } from './jira';
 import Sessions, { Session } from './sessions';
@@ -8,7 +9,7 @@ const sessions = new Sessions();
 
 const io = new Server<ClientToServer, ServerToClient>({
 	cors: {
-		origin: 'http://localhost:3000', //TODO Config
+		origin: config.server.url,
 	},
 });
 
