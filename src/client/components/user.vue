@@ -31,8 +31,8 @@
 	<div :class="[ 'user', props.size ]">
 		<component :is="props.badge ? 'a-badge' : 'div'">
 			<template #count>
-				<i v-if="props.badge === 'tick'" class="fas fa-check-circle"></i>
-				<i v-else-if="props.badge === 'user'" class="fas fa-user-circle"></i>
+				<i v-if="props.badge === 'tick'" class="fas fa-check-circle opaque"></i>
+				<i v-else-if="props.badge === 'user'" class="fas fa-user-circle opaque"></i>
 			</template>
 			<component :is="props.iconOnly ? 'a-tooltip' : 'div'" placement="bottom" :title="props.displayName">
 				<a-avatar v-if="props.avatar" :size="props.size" shape="square" :src="props.avatar" />
@@ -49,8 +49,9 @@
 		align-items: center;
 		gap: 10px;
 
-		.ant-avatar {
-
+		i.opaque {
+			background-color: #fff;
+			border-radius: 200px;
 		}
 
 		&.small .name {

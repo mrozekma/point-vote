@@ -1,12 +1,13 @@
 <script lang="ts" setup>
 	import { message, TableColumnProps } from 'ant-design-vue';
-	import { computed, reactive, ref, watch } from 'vue';
+	import hotkeys from 'hotkeys-js';
+	import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 	import { useRoute } from 'vue-router';
 
 	import PvUser from '../components/user.vue';
 	import PvVoteTag from '../components/vote-tag.vue';
 
-	import { ClientToServer, ErrorObject, isErrorObject, JiraUser, SessionFullJson } from '../../events';
+	import { ClientToServer, ErrorObject, isErrorObject, JiraUser, Round, SessionFullJson } from '../../events';
 	import useStore from '../store';
 
 	// Vite refuses to let me do this:
@@ -37,6 +38,11 @@
 	function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
 		return new Promise(resolve => store.socket.emit('getSession', id, resolve));
 	}
+
+	const settings = reactive({
+		autoEnd: false,
+		hideSelf: false,
+	});
 
 	interface Option {
 		name: string;
@@ -81,6 +87,13 @@
 		});
 	}
 
+	function getRound(): Round {
+		if(isErrorObject(session.value) || !session.value.round) {
+			throw new Error("No round");
+		}
+		return session.value.round;
+	}
+
 	function startRound() {
 		newRound.loading = true;
 		newRound.error = undefined;
@@ -102,10 +115,7 @@
 	}
 
 	function restartRound() {
-		if(isErrorObject(session.value) || !session.value.round) {
-			throw new Error("No round");
-		}
-		const { description, options, jiraIssue } = session.value.round;
+		const { description, options, jiraIssue } = getRound();
 		sendServer('startRound', description, options, jiraIssue ? store.jira!.auth : undefined);
 	}
 
@@ -114,11 +124,22 @@
 	let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
 	let myVote = ref<false | string | undefined>();
 
+	function checkAutoEnd() {
+		if(isOwner.value && settings.autoEnd && !isErrorObject(session.value)) {
+			const round = session.value.round;
+			if(round && session.value.members.every(member => round.votes[member.key] === true)) {
+				setTimeout(() => endRound(), 1);
+			}
+		}
+	}
+
 	watch(session, newVal => {
 		if(myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 			myVote.value = undefined;
 		}
+		checkAutoEnd();
 	});
+	watch(settings, () => checkAutoEnd());
 
 	interface Vote {
 		user: JiraUser;
@@ -213,9 +234,7 @@
 	});
 
 	function castVote(vote: string | false) {
-		if(isErrorObject(session.value) || !session.value.round) {
-			throw new Error("No round");
-		}
+		getRound();
 		if(vote === myVote.value) {
 			// Clicked their current vote again; retract it
 			sendServer('retractVote').then(() => myVote.value = undefined);
@@ -223,6 +242,63 @@
 			sendServer('castVote', vote).then(() => myVote.value = vote);
 		}
 	}
+
+	const hiddenVote = ref<string | undefined>(undefined);
+	function startHiddenVote() {
+		getRound();
+		if(myVote.value !== undefined) {
+			// They already voted; retract it
+			castVote(myVote.value);
+		}
+		hiddenVote.value = '';
+		hotkeys.setScope('vote');
+	}
+	function castHiddenVote() {
+		const round = getRound();
+		const search = hiddenVote.value;
+		if(search === undefined) {
+			return;
+		}
+		hiddenVote.value = undefined;
+		hotkeys.setScope('');
+		let vote: string | false;
+		// Look for exact matches. If none, then try substring matches (this avoids problems like trying to vote '1' when '13' is also an option)
+		if(search == '') {
+			return;
+		} else if(search == '-') {
+			vote = false;
+		} else if(round.options.indexOf(search) >= 0) {
+			vote = search;
+		} else {
+			const matches = round.options.filter(opt => opt.includes(search));
+			if(matches.length == 0) {
+				message.error("Hidden vote does not fit any option", 5);
+				return;
+			} else if(matches.length > 1) {
+				message.error("Hidden vote matches multiple options; be more specific", 5);
+				return;
+			} else {
+				vote = matches[1];
+			}
+		}
+		castVote(vote);
+	}
+	function cancelHiddenVote() {
+		hiddenVote.value = undefined;
+		hotkeys.setScope('');
+	}
+	onUnmounted(() => hotkeys.setScope(''));
+	hotkeys('*', 'vote', e => {
+		if(hiddenVote.value !== undefined && e.key.length == 1) {
+			hiddenVote.value += e.key;
+		}
+	});
+	hotkeys('enter', 'vote', () => {
+		if(hiddenVote.value !== undefined) {
+			castHiddenVote();
+		}
+	});
+	hotkeys('escape', 'vote', () => cancelHiddenVote());
 
 	function setStoryPoints(points: number) {
 		if(isErrorObject(session.value) || !session.value.round) {
@@ -254,9 +330,14 @@
 					</template>
 				</a-card>
 			</div>
-			<div class="button-bar">
-				<a-button v-for="option in session.round.options" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
-				<a-button :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
+			<template v-if="isOwner && settings.hideSelf && !session.round.done">
+				<a-button v-if="myVote !== undefined" size="large" type="primary" @click="startHiddenVote">Vote cast. Click to change vote</a-button>
+				<a-button v-else-if="hiddenVote === undefined" size="large" @click="startHiddenVote">Click to vote</a-button>
+				<a-button v-else size="large" loading @click="cancelHiddenVote">Type your vote and press Enter</a-button>
+			</template>
+			<div v-else class="button-bar">
+				<a-button v-for="option in session.round.options" :disabled="session.round.done" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
+				<a-button :disabled="session.round.done" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
 			</div>
 			<div v-if="isOwner" class="button-bar">
 				<template v-if="!session.round.done">
@@ -289,7 +370,7 @@
 						<a-tooltip v-if="record.isPlurality" placement="bottom" title="Plurality">
 							<i class="fas fa-medal"></i>
 						</a-tooltip>
-						<a-tooltip v-if="isOwner && session.round!.jiraIssue && typeof text === 'string' && /^[0-9]+$/.test(text)" placement="bottom" title="Set the issue's story points to this value">
+						<a-tooltip v-if="isOwner && session.round!.jiraIssue && !isErrorObject(session.round!.jiraIssue) && typeof text === 'string' && /^[0-9]+$/.test(text)" placement="bottom" title="Set the issue's story points to this value">
 							<a-button size="small" class="push-to-jira" @click="setStoryPoints(parseInt(text))"><i class="fas fa-arrow-right"></i><i class="fab fa-jira"></i></a-button>
 						</a-tooltip>
 					</template>
@@ -302,14 +383,16 @@
 			</a-table>
 		</div>
 
-		<template v-if="isOwner">
-			<a-card title="Next round" size="small" class="new-round">
+		<div v-if="isOwner" class="round-settings-panels">
+			<a-card title="Next round" size="small">
 				<a-form class="two-col" autocomplete="off" @finish="startRound">
 					<a-form-item label="Description">
 						<a-input v-model:value="newRound.description" placeholder="JIRA key, etc." @pressEnter="startRound" />
 					</a-form-item>
 					<a-form-item label="JIRA">
-						<a-switch v-model:checked="newRound.jiraIssue" />Show JIRA issue details (description must be a JIRA key or URL).
+						<div class="switches">
+							<a-switch v-model:checked="newRound.jiraIssue" /> Show JIRA issue details (description must be a JIRA key or URL).
+						</div>
 					</a-form-item>
 					<a-form-item label="Options">
 						<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />
@@ -322,7 +405,14 @@
 				<a-button type="primary" htmlType="submit" @click="startRound" :loading="newRound.loading">Start</a-button>
 				<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
 			</a-card>
-		</template>
+
+			<a-card title="Settings" size="small">
+				<div class="switches">
+					<a-switch v-model:checked="settings.autoEnd" /> Automatically end the round when everyone has voted.
+					<a-switch v-model:checked="settings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
+				</div>
+			</a-card>
+		</div>
 	</template>
 </template>
 
@@ -341,8 +431,14 @@
 		margin: 5px 0;
 		display: flex;
 		gap: 5px;
+
+		.ant-btn-primary:disabled {
+			background-color: #1890ff;
+			color: #fff;
+		}
 	}
-	.vote-tables {
+
+	.vote-tables, .round-settings-panels {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 10px;
@@ -365,9 +461,14 @@
 		}
 	}
 
-	.new-round {
-		.ant-switch {
-			margin-right: 10px;
-		}
+	.switches {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 10px;
+	}
+
+	.ant-btn.green {
+		background-color: #52c41a;
+		border-color: #52c41a;
 	}
 </style>
