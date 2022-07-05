@@ -51,7 +51,7 @@
 
 	const options: Option[] = [{
 		name: 'Modified Fibonacci' as const,
-		options: [ '.5', '1', '2', '3', '5', '8', '13', '20', '40', '60', '100' ],
+		options: [ '.5', '1', '2', '3', '5', '8', '13', '20', '30', '40', '60', '100' ],
 	}, {
 		name: 'Confidence' as const,
 		options: [ '1', '2', '3', '4', '5' ],
@@ -321,14 +321,16 @@
 		<template v-if="session.round">
 			<div class="description">
 				{{ session.round.description }}
-				<a-card v-if="session.round.jiraIssue" title="Jira description" size="small">
+				<template v-if="session.round.jiraIssue">
 					<a-alert v-if="isErrorObject(session.round.jiraIssue)" type="error" :message="session.round.jiraIssue.error" />
-					<div v-else v-html="session.round.jiraIssue.descriptionHtml" />
-					<template #extra>
-						<a-tag v-if="!isErrorObject(session.round.jiraIssue) && session.round.jiraIssue.storyPoints !== undefined">{{ session.round.jiraIssue.storyPoints }}</a-tag>
-						<a-button v-if="!isErrorObject(session.round.jiraIssue)" :href="session.round.jiraIssue.url" target="_blank" size="small"><i class="fab fa-jira"></i></a-button>
-					</template>
-				</a-card>
+					<a-card v-else :title="`${session.round.jiraIssue.key}: ${session.round.jiraIssue.summary}`" size="small">
+						<div v-html="session.round.jiraIssue.descriptionHtml" />
+						<template #extra>
+							<a-tag v-if="!isErrorObject(session.round.jiraIssue) && session.round.jiraIssue.storyPoints !== undefined">{{ session.round.jiraIssue.storyPoints }}</a-tag>
+							<a-button v-if="!isErrorObject(session.round.jiraIssue)" :href="session.round.jiraIssue.url" target="_blank" size="small"><i class="fab fa-jira"></i></a-button>
+						</template>
+					</a-card>
+				</template>
 			</div>
 			<template v-if="isOwner && settings.hideSelf && !session.round.done">
 				<a-button v-if="myVote !== undefined" size="large" type="primary" @click="startHiddenVote">Vote cast. Click to change vote</a-button>

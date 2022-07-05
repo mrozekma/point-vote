@@ -238,7 +238,11 @@ export default class Sessions extends EventEmitter {
 
 		socket.on('startRound', (description, options, jiraAuth, cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
-				description = description.trim() || 'Vote';
+				description = description.trim();
+				if(!description) {
+					description = 'Vote';
+					jiraAuth = undefined;
+				}
 				if(new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
 				}

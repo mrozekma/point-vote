@@ -40,6 +40,7 @@ export interface SessionJson {
 export interface JiraIssue {
 	key: string;
 	url: string;
+	summary: string;
 	descriptionHtml: string;
 	storyPoints?: number;
 }

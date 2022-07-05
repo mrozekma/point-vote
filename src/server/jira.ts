@@ -44,12 +44,13 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 	if(!match) {
 		throw new Error("Couldn't find JIRA key or URL");
 	}
-	const key = match[1];
+	const key = match[1].toUpperCase();
 	const jira = makeJiraApi(auth);
 	const issue = await jira.getIssue(key, undefined, 'renderedFields');
 	return {
 		key,
-		url: `${jiraUrl}/browse/${key}`,
+		url: `${jiraUrl}browse/${key}`,
+		summary: issue.fields.summary,
 		descriptionHtml: issue.renderedFields.description,
 		storyPoints: config.jira.storyPointsFieldName ? issue.fields[config.jira.storyPointsFieldName] ?? undefined : undefined,
 	};
