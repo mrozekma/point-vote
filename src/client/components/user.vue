@@ -1,34 +1,34 @@
 <script lang="ts" setup>
-	import uniqolor from 'uniqolor';
-	import { computed } from 'vue';
+import uniqolor from 'uniqolor';
+import { computed } from 'vue';
 
-	const props = withDefaults(defineProps<{
-		key?: any; // This is present in JiraUser so this makes it easy to v-bind a JiraUser object
-		name: string;
-		displayName: string;
-		avatar?: string;
-		size?: 'default' | 'small' | 'large';
-		iconOnly?: boolean;
-		badge?: 'tick' | 'user' | undefined;
-	}>(), {
-		size: 'default',
-		iconOnly: false,
-	});
+const props = withDefaults(defineProps<{
+	key?: any; // This is present in JiraUser so this makes it easy to v-bind a JiraUser object
+	name: string;
+	displayName: string;
+	avatar?: string;
+	size?: 'default' | 'small' | 'large';
+	iconOnly?: boolean;
+	badge?: 'tick' | 'user' | undefined;
+}>(), {
+	size: 'default',
+	iconOnly: false,
+});
 
-	const initials = computed<string>(() => {
-		const words = props.displayName.split(' ');
-		switch(words.length) {
-			case 0: return '';
-			case 1: return words[0][0].toUpperCase();
-			default: return words[0][0].toUpperCase() + words[words.length - 1][0].toUpperCase();
-		}
-	});
+const initials = computed<string>(() => {
+	const words = props.displayName.split(' ');
+	switch (words.length) {
+		case 0: return '';
+		case 1: return words[0][0].toUpperCase();
+		default: return words[0][0].toUpperCase() + words[words.length - 1][0].toUpperCase();
+	}
+});
 
-	const color = computed<string>(() => uniqolor(props.displayName).color);
+const color = computed<string>(() => uniqolor(props.displayName).color);
 </script>
 
 <template>
-	<div :class="[ 'user', props.size ]">
+	<div :class="['user', props.size]">
 		<component :is="props.badge ? 'a-badge' : 'div'">
 			<template #count>
 				<i v-if="props.badge === 'tick'" class="fas fa-check-circle opaque"></i>
@@ -44,24 +44,26 @@
 </template>
 
 <style lang="less" scoped>
-	.user {
-		display: flex;
-		align-items: center;
-		gap: 10px;
+.user {
+	display: flex;
+	align-items: center;
+	gap: 10px;
 
-		i.opaque {
-			background-color: #fff;
-			border-radius: 200px;
-		}
-
-		&.small .name {
-			font-size: 12pt;
-		}
-		&.default .name {
-			font-size: 14pt;
-		}
-		&.large .name {
-			font-size: 16pt;
-		}
+	i.opaque {
+		background-color: #fff;
+		border-radius: 200px;
 	}
+
+	&.small .name {
+		font-size: 12pt;
+	}
+
+	&.default .name {
+		font-size: 14pt;
+	}
+
+	&.large .name {
+		font-size: 16pt;
+	}
+}
 </style>

@@ -1,81 +1,81 @@
 <script lang="ts" setup>
-	import { TableColumnProps } from 'ant-design-vue';
-	import { reactive, ref } from 'vue';
-	import { useRouter } from 'vue-router';
+import { TableColumnProps } from 'ant-design-vue';
+import { reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
-	import PvUser from '../components/user.vue';
+import PvUser from '../components/user.vue';
 
-	import useStore from '../store';
-	import { isErrorObject, SessionJson } from '../../events';
+import useStore from '../store';
+import { isErrorObject, SessionJson } from '../../events';
 
-	const router = useRouter();
-	const store = useStore();
+const router = useRouter();
+const store = useStore();
 
-	function logout() {
-		store.onLogout();
-	}
+function logout() {
+	store.onLogout();
+}
 
-	const newSession = reactive({
-		name: `${store.jira!.user.displayName}'s session`,
-		loading: false,
-		error: undefined as string | undefined,
-	});
+const newSession = reactive({
+	name: `${store.jira!.user.displayName}'s session`,
+	loading: false,
+	error: undefined as string | undefined,
+});
 
-	function createSession() {
-		newSession.loading = true;
-		store.socket.emit('createSession', newSession.name, session => {
-			if(isErrorObject(session)) {
-				newSession.loading = false;
-				newSession.error = session.error;
-			} else {
-				router.push(`/${session.id}`);
-			}
-		});
-	}
-
-	const sessions = ref<SessionJson[]>([]);
-	const sessionsError = ref<string | undefined>(undefined);
-	store.socket.on('updateSessions', val => {
-		sessions.value = val;
-		sessionsError.value = undefined;
-	});
-	store.socket.emit('getSessions', val => {
-		if(isErrorObject(val)) {
-			sessionsError.value = val.error;
+function createSession() {
+	newSession.loading = true;
+	store.socket.emit('createSession', newSession.name, session => {
+		if (isErrorObject(session)) {
+			newSession.loading = false;
+			newSession.error = session.error;
 		} else {
-			sessions.value = val;
+			router.push(`/${session.id}`);
 		}
 	});
+}
 
-	const sessionsColumns: TableColumnProps[] = [{
-		dataIndex: 'id',
-		title: 'ID',
-	}, {
-		dataIndex: 'name',
-		title: 'Name',
-	}, {
-		dataIndex: 'owner',
-		title: 'Owner',
-	}, {
-		dataIndex: 'created',
-		title: 'Created',
-	}, {
-		dataIndex: 'members',
-		title: 'Members',
-	}];
-
-	function customRow(session: SessionJson) {
-		return {
-			onClick(e: PointerEvent) {
-				router.push(`/${session.id}`);
-			},
-			onMousedown(e: MouseEvent) {
-				if(e.button == 1) {
-					window.open(`/${session.id}`, '_blank');
-				}
-			},
-		};
+const sessions = ref<SessionJson[]>([]);
+const sessionsError = ref<string | undefined>(undefined);
+store.socket.on('updateSessions', val => {
+	sessions.value = val;
+	sessionsError.value = undefined;
+});
+store.socket.emit('getSessions', val => {
+	if (isErrorObject(val)) {
+		sessionsError.value = val.error;
+	} else {
+		sessions.value = val;
 	}
+});
+
+const sessionsColumns: TableColumnProps[] = [{
+	dataIndex: 'id',
+	title: 'ID',
+}, {
+	dataIndex: 'name',
+	title: 'Name',
+}, {
+	dataIndex: 'owner',
+	title: 'Owner',
+}, {
+	dataIndex: 'created',
+	title: 'Created',
+}, {
+	dataIndex: 'members',
+	title: 'Members',
+}];
+
+function customRow(session: SessionJson) {
+	return {
+		onClick(e: PointerEvent) {
+			router.push(`/${session.id}`);
+		},
+		onMousedown(e: MouseEvent) {
+			if (e.button == 1) {
+				window.open(`/${session.id}`, '_blank');
+			}
+		},
+	};
+}
 </script>
 
 <template>
@@ -114,24 +114,25 @@
 </template>
 
 <style lang="less" scoped>
-	.ant-table-wrapper :deep(.ant-table-row) {
-		cursor: pointer;
-	}
+.ant-table-wrapper :deep(.ant-table-row) {
+	cursor: pointer;
+}
 
-	.login-info {
-		display: flex;
-		gap: 20px;
-		align-items: center;
-		margin-bottom: 20px;
-	}
+.login-info {
+	display: flex;
+	gap: 20px;
+	align-items: center;
+	margin-bottom: 20px;
+}
 
-	.sections {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 30px;
-	}
-	.users {
-		display: flex;
-		gap: 5px;
-	}
+.sections {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 30px;
+}
+
+.users {
+	display: flex;
+	gap: 5px;
+}
 </style>

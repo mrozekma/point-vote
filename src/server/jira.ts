@@ -17,7 +17,7 @@ const jiraUrl = new URL(config.jira.url);
 const privKey = fs.readFileSync(config.jira.privateKey, 'utf8');
 
 // Whee
-if(!config.jira.strictSSL) {
+if (!config.jira.strictSSL) {
 	process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 }
 
@@ -41,7 +41,7 @@ function makeJiraApi(auth: JiraAuth): JiraApi {
 const jiraIssueRe = new RegExp(`^(?:(?:${jiraUrl.protocol}//)?${jiraUrl.host}.*/browse/)?([A-Za-z0-9-]+)$`);
 export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<JiraIssue> {
 	const match = key_or_url.match(jiraIssueRe);
-	if(!match) {
+	if (!match) {
 		throw new Error("Couldn't find JIRA key or URL");
 	}
 	const key = match[1].toUpperCase();
@@ -57,13 +57,13 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 }
 
 export async function setJiraStoryPoints(auth: JiraAuth, key: string, points: number): Promise<void> {
-	if(!config.jira.storyPointsFieldName) {
+	if (!config.jira.storyPointsFieldName) {
 		throw new Error("Story point field not configured");
 	}
 	const jira = makeJiraApi(auth);
 	const res = await jira.updateIssue(key, { fields: { [config.jira.storyPointsFieldName]: points } });
 	let err = res?.errors?.[config.jira.storyPointsFieldName]
-	if(err) {
+	if (err) {
 		throw new Error(err);
 	}
 }
@@ -72,8 +72,8 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLogin', (originUrl, cb) => {
 		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', originUrl, 'RSA-SHA1');
 		oauth.getOAuthRequestToken((err: OAuthError | null, token: string, secret: string) => {
-			if(err) {
-				if(err.statusCode && err.data) {
+			if (err) {
+				if (err.statusCode && err.data) {
 					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
 				} else {
 					cb({ error: `${err}` });
@@ -87,8 +87,8 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLoginFinish', (token, secret, verifier, cb) => {
 		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', null, 'RSA-SHA1');
 		oauth.getOAuthAccessToken(token, secret, verifier, (err: OAuthError | null, token: string, secret: string, results: any) => {
-			if(err) {
-				if(err.statusCode && err.data) {
+			if (err) {
+				if (err.statusCode && err.data) {
 					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
 				} else {
 					cb({ error: `${err}` });
@@ -103,7 +103,7 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 		try {
 			const jira = makeJiraApi(auth);
 			const info = await jira.getCurrentUser();
-			if(typeof info === 'string') {
+			if (typeof info === 'string') {
 				throw new Error(info);
 			}
 			const user: JiraUser = {
@@ -112,12 +112,12 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 				displayName: info.displayName,
 				avatar: (() => {
 					// This is really annoying. Why would they format avatarUrls like this.
-					if(!info.avatarUrls || Object.entries(info.avatarUrls).length == 0) {
+					if (!info.avatarUrls || Object.entries(info.avatarUrls).length == 0) {
 						return undefined;
 					}
 					let largest: string = '0';
-					for(const k of Object.keys(info.avatarUrls)) {
-						if(parseInt(k) > parseInt(largest)) {
+					for (const k of Object.keys(info.avatarUrls)) {
+						if (parseInt(k) > parseInt(largest)) {
 							largest = k;
 						}
 					}
@@ -126,7 +126,7 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 			};
 			socket.data.user = user;
 			cb(user);
-		} catch(e) {
+		} catch (e) {
 			socket.data.user = undefined;
 			cb({ error: `${e}` });
 		}

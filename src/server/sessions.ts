@@ -24,14 +24,14 @@ export class Session {
 
 	public addMember(user: JiraUser) {
 		const existing = this.members.find(seek => seek.key === user.key);
-		if(existing) {
+		if (existing) {
 			existing.count++;
 		} else {
 			this.members.push({
 				...user,
 				count: 1,
 			});
-			if(this.removeTimer) {
+			if (this.removeTimer) {
 				clearTimeout(this.removeTimer);
 				this.removeTimer = undefined;
 			}
@@ -41,10 +41,10 @@ export class Session {
 
 	public removeMember(user: JiraUser) {
 		const idx = this.members.findIndex(seek => seek.key === user.key);
-		if(idx >= 0) {
-			if(--this.members[idx].count == 0) {
+		if (idx >= 0) {
+			if (--this.members[idx].count == 0) {
 				this.members.splice(idx, 1);
-				if(this.members.length == 0) {
+				if (this.members.length == 0) {
 					this.removeTimer = setTimeout(() => this.sessions.remove(this), REMOVE_EMPTY_SESSION_MS);
 				}
 			}
@@ -62,7 +62,7 @@ export class Session {
 	}
 
 	public endRound() {
-		if(!this.round) {
+		if (!this.round) {
 			throw new Error("No round");
 		}
 		this.round.done = true;
@@ -75,13 +75,13 @@ export class Session {
 	}
 
 	public castVote(user: JiraUser, vote: string | false) {
-		if(!this.round) {
+		if (!this.round) {
 			throw new Error("No round");
-		} else if(this.round.done) {
+		} else if (this.round.done) {
 			throw new Error("Round is over");
-		} else if(typeof vote === 'string' && this.round.options.indexOf(vote) < 0) {
+		} else if (typeof vote === 'string' && this.round.options.indexOf(vote) < 0) {
 			throw new Error("Invalid vote");
-		} else if(!this.members.some(member => member.key == user.key)) {
+		} else if (!this.members.some(member => member.key == user.key)) {
 			throw new Error("Not a member of the session");
 		}
 		this.round.votes[user.key] = vote;
@@ -89,9 +89,9 @@ export class Session {
 	}
 
 	public retractVote(user: JiraUser) {
-		if(!this.round) {
+		if (!this.round) {
 			throw new Error("No round");
-		} else if(this.round.done) {
+		} else if (this.round.done) {
 			throw new Error("Round is over");
 		}
 		delete this.round.votes[user.key];
@@ -99,9 +99,9 @@ export class Session {
 	}
 
 	public async setStoryPoints(points: number, auth: JiraAuth): Promise<void> {
-		if(!this.round) {
+		if (!this.round) {
 			throw new Error("No round");
-		} else if(!this.round.jiraIssue || isErrorObject(this.round.jiraIssue)) {
+		} else if (!this.round.jiraIssue || isErrorObject(this.round.jiraIssue)) {
 			throw new Error("No JIRA issue");
 		}
 		await setJiraStoryPoints(auth, this.round.jiraIssue.key, points);
@@ -122,11 +122,11 @@ export class Session {
 	}
 
 	public roundToJson(): Round | undefined {
-		if(!this.round || this.round.done) {
+		if (!this.round || this.round.done) {
 			return this.round;
 		}
 		// For an in-progress round, hide vote values
-		const votes = Object.fromEntries(Object.entries(this.round.votes).map(([ k, v ]) => [ k, true ]));
+		const votes = Object.fromEntries(Object.entries(this.round.votes).map(([k, v]) => [k, true]));
 		return {
 			...this.round,
 			votes,
@@ -162,8 +162,8 @@ export default class Sessions extends EventEmitter {
 		name = name.trim();
 
 		// Duplicating the name isn't strictly a problem since sessions are found by ID, but it seems best avoided
-		for(const session of this.sessions.values()) {
-			if(session.name == name) {
+		for (const session of this.sessions.values()) {
+			if (session.name == name) {
 				throw new Error("Session name already in use");
 			}
 		}
@@ -175,7 +175,7 @@ export default class Sessions extends EventEmitter {
 				readable: true,
 				capitalization: 'uppercase',
 			});
-		} while(this.sessions.has(id));
+		} while (this.sessions.has(id));
 
 		const session = new Session(this, id, name, creator);
 		this.sessions.set(id, session);
@@ -185,10 +185,10 @@ export default class Sessions extends EventEmitter {
 
 	public remove(session: Session) {
 		// Double-check that the session is empty
-		if(session.members.length > 0) {
+		if (session.members.length > 0) {
 			throw new Error("Can't remove non-empty session");
 		}
-		if(this.sessions.delete(session.id)) {
+		if (this.sessions.delete(session.id)) {
 			this.sessionsChanged();
 		}
 	}
@@ -201,17 +201,17 @@ export default class Sessions extends EventEmitter {
 		});
 		socket.on('createSession', (name, cb) => {
 			const user: JiraUser = socket.data.user;
-			if(!user) {
+			if (!user) {
 				return cb({ error: "Not logged in" });
 			}
 			try {
 				cb(this.create(name, user).toJson());
-			} catch(e) {
+			} catch (e) {
 				cb({ error: `${e}` });
 			}
 		});
 		socket.on('disconnect', reason => {
-			if(socket.data.session && socket.data.user) {
+			if (socket.data.session && socket.data.user) {
 				socket.data.session.removeMember(socket.data.user);
 			}
 		});
@@ -219,18 +219,18 @@ export default class Sessions extends EventEmitter {
 		async function getSessionAndUser(errorCb: (err: ErrorObject) => void, mustBeOwner: boolean, mustHaveRound: boolean, cb: (session: Session, user: JiraUser) => void) {
 			const session: Session = socket.data.session;
 			const user: JiraUser = socket.data.user;
-			if(!session) {
+			if (!session) {
 				errorCb({ error: "No session" });
-			} else if(!user) {
+			} else if (!user) {
 				errorCb({ error: "No user" });
-			} else if(mustBeOwner && session.owner.key != user.key) {
+			} else if (mustBeOwner && session.owner.key != user.key) {
 				errorCb({ error: "Not session owner" });
-			} else if(mustHaveRound && !session.round) {
+			} else if (mustHaveRound && !session.round) {
 				errorCb({ error: "No round" });
 			} else {
 				try {
 					await cb(session, user);
-				} catch(e) {
+				} catch (e) {
 					errorCb({ error: `${e}` });
 				}
 			}
@@ -239,18 +239,18 @@ export default class Sessions extends EventEmitter {
 		socket.on('startRound', (description, options, jiraAuth, cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
 				description = description.trim();
-				if(!description) {
+				if (!description) {
 					description = 'Vote';
 					jiraAuth = undefined;
 				}
-				if(new Set(options).size < 2) {
+				if (new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
 				}
 				let jiraIssue: JiraIssue | ErrorObject | undefined;
-				if(jiraAuth) {
+				if (jiraAuth) {
 					try {
 						jiraIssue = await getJiraIssue(jiraAuth, description);
-					} catch(e) {
+					} catch (e) {
 						jiraIssue = {
 							error: `${e}`,
 						};

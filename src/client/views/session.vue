@@ -1,316 +1,316 @@
 <script lang="ts" setup>
-	import { message, TableColumnProps } from 'ant-design-vue';
-	import hotkeys from 'hotkeys-js';
-	import { computed, onUnmounted, reactive, ref, watch } from 'vue';
-	import { useRoute } from 'vue-router';
+import { message, TableColumnProps } from 'ant-design-vue';
+import hotkeys from 'hotkeys-js';
+import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
-	import PvUser from '../components/user.vue';
-	import PvVoteTag from '../components/vote-tag.vue';
+import PvUser from '../components/user.vue';
+import PvVoteTag from '../components/vote-tag.vue';
 
-	import { ClientToServer, ErrorObject, isErrorObject, JiraUser, Round, SessionFullJson } from '../../events';
-	import useStore from '../store';
+import { ClientToServer, ErrorObject, isErrorObject, JiraUser, Round, SessionFullJson } from '../../events';
+import useStore from '../store';
 
-	// Vite refuses to let me do this:
-	//   import { EventNames, EventParams } from 'socket.io/dist/typed-events';
-	// I get:
-	//   ERROR: [plugin: vite:dep-scan] Missing "./dist/typed-events" export in "socket.io" package
-	// So I copied the types I care about:
-	interface EventsMap { [event: string]: any; }
-	type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
-	type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
+// Vite refuses to let me do this:
+//   import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+// I get:
+//   ERROR: [plugin: vite:dep-scan] Missing "./dist/typed-events" export in "socket.io" package
+// So I copied the types I care about:
+interface EventsMap { [event: string]: any; }
+type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
+type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
 
-	const route = useRoute();
-	const store = useStore();
+const route = useRoute();
+const store = useStore();
 
-	// Suspense not supporting errors is...deeply annoying
-	// function getSession(id: string): Promise<SessionFullJson> {
-	// 	return new Promise((resolve, reject) => {
-	// 		store.socket.emit('getSession', id, session => {
-	// 			if(isErrorObject(session)) {
-	// 				reject(session.error);
-	// 			} else {
-	// 				resolve(session);
-	// 			}
-	// 		});
-	// 	});
-	// }
+// Suspense not supporting errors is...deeply annoying
+// function getSession(id: string): Promise<SessionFullJson> {
+// 	return new Promise((resolve, reject) => {
+// 		store.socket.emit('getSession', id, session => {
+// 			if(isErrorObject(session)) {
+// 				reject(session.error);
+// 			} else {
+// 				resolve(session);
+// 			}
+// 		});
+// 	});
+// }
 
-	function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
-		return new Promise(resolve => store.socket.emit('getSession', id, resolve));
-	}
+function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
+	return new Promise(resolve => store.socket.emit('getSession', id, resolve));
+}
 
-	const settings = reactive({
-		autoEnd: false,
-		hideSelf: false,
-	});
+const settings = reactive({
+	autoEnd: false,
+	hideSelf: false,
+});
 
-	interface Option {
-		name: string;
-		options: string[];
-	}
+interface Option {
+	name: string;
+	options: string[];
+}
 
-	const options: Option[] = [{
-		name: 'Modified Fibonacci' as const,
-		options: [ '.5', '1', '2', '3', '5', '8', '13', '20', '30', '40', '60', '100' ],
-	}, {
-		name: 'Confidence' as const,
-		options: [ '1', '2', '3', '4', '5' ],
-	}];
+const options: Option[] = [{
+	name: 'Modified Fibonacci' as const,
+	options: ['.5', '1', '2', '3', '5', '8', '13', '20', '30', '40', '60', '100'],
+}, {
+	name: 'Confidence' as const,
+	options: ['1', '2', '3', '4', '5'],
+}];
 
-	const newRound = reactive({
-		description: '',
-		jiraIssue: true,
-		options: [ ...options[0].options ],
-		loading: false,
-		error: undefined as string | undefined,
-	});
+const newRound = reactive({
+	description: '',
+	jiraIssue: true,
+	options: [...options[0].options],
+	loading: false,
+	error: undefined as string | undefined,
+});
 
-	type RemoveCallbackParam<T>    = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
-	type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? Promise<V> : never;
+type RemoveCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
+type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? Promise<V> : never;
 
-	// Wrapper around store.socket.emit() that converts the callback into a Promise, and shows a popup when the response is an error.
-	// This does assume the callback is last, the typing doesn't enforce it.
-	function sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveCallbackParam<EventParams<ClientToServer, Ev>>): PromisifyCallbackParam<EventParams<ClientToServer, Ev>> {
-		const arr = params as any;
-		//@ts-ignore
-		return new Promise((resolve, reject) => {
-			// Add the missing callback argument and have it resolve/reject the promise depending on the value it's called with
-			arr.push((res: any) => {
-				if(isErrorObject(res)) {
-					message.error(res.error, 5);
-					reject(res.error);
-				} else {
-					resolve(res);
-				}
-			});
-			store.socket.emit(event, ...arr);
-		});
-	}
-
-	function getRound(): Round {
-		if(isErrorObject(session.value) || !session.value.round) {
-			throw new Error("No round");
-		}
-		return session.value.round;
-	}
-
-	function startRound() {
-		newRound.loading = true;
-		newRound.error = undefined;
-		sendServer('startRound', newRound.description, newRound.options, newRound.jiraIssue ? store.jira!.auth : undefined)
-			.then(() => {
-				newRound.description = '';
-			})
-			.finally(() => {
-				newRound.loading = false;
-			});
-	}
-
-	function endRound() {
-		sendServer('endRound');
-	}
-
-	function clearRound() {
-		sendServer('clearRound');
-	}
-
-	function restartRound() {
-		const { description, options, jiraIssue } = getRound();
-		sendServer('startRound', description, options, jiraIssue ? store.jira!.auth : undefined);
-	}
-
-	let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
-	store.socket.on('updateSession', val => session.value = val);
-	let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
-	let myVote = ref<false | string | undefined>();
-
-	function checkAutoEnd() {
-		if(isOwner.value && settings.autoEnd && !isErrorObject(session.value)) {
-			const round = session.value.round;
-			if(round && session.value.members.every(member => round.votes[member.key] === true)) {
-				setTimeout(() => endRound(), 1);
-			}
-		}
-	}
-
-	watch(session, newVal => {
-		if(myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
-			myVote.value = undefined;
-		}
-		checkAutoEnd();
-	});
-	watch(settings, () => checkAutoEnd());
-
-	interface Vote {
-		user: JiraUser;
-		vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
-	}
-
-	const memberVotesColumns = computed<TableColumnProps<Vote>[]>(() => {
-		const rtn: TableColumnProps<Vote>[] = [{
-			dataIndex: 'user',
-			title: 'Member',
-			defaultSortOrder: 'ascend',
-			sorter: {
-				compare(a, b) {
-					return a.user.displayName.localeCompare(b.user.displayName);
-				},
-			}
-		}];
-		if(!isErrorObject(session.value) && session.value.round) {
-			rtn.push({
-				dataIndex: 'vote',
-				title: 'Vote',
-				width: 300,
-			});
-		}
-		return rtn;
-	});
-
-	let memberVotesData = computed<Vote[]>(() => {
-		if(isErrorObject(session.value)) {
-			return [];
-		}
-		const round = session.value.round;
-		return session.value.members.map(user => ({
-			user,
-			vote: round?.votes[user.key],
-		}));
-	});
-
-	interface VoteMembers {
-		vote: false | string | undefined;
-		voters: JiraUser[];
-		isPlurality: boolean;
-	}
-
-	const voteMembersColumns: TableColumnProps[] = [{
-		dataIndex: 'vote',
-		title: 'Vote',
-		width: 300,
-	}, {
-		dataIndex: 'voters',
-		title: 'Voters',
-	}];
-
-	let voteMembersData = computed<VoteMembers[]>(() => {
-		if(isErrorObject(session.value) || !session.value.round || !session.value.round.done) {
-			return [];
-		}
-		const rtn: VoteMembers[] = [];
-		let largest = 0;
-		function process(option: string | false | undefined) {
-			const voters: JiraUser[] = [];
-			for(const vote of memberVotesData.value) {
-				if(vote.vote === option) {
-					voters.push(vote.user);
-				}
-			}
-			if(voters.length > 0) {
-				rtn.push({
-					vote: option,
-					voters,
-					isPlurality: false,
-				});
-				if(voters.length > largest) {
-					largest = voters.length;
-				}
-			}
-		}
-		for(const option of session.value.round.options) {
-			process(option);
-		}
-		// Checking for the plurality is done before processing abstentions/no votes so they can't win
-		if(largest > 0) {
-			for(const e of rtn) {
-				if(e.voters.length == largest) {
-					e.isPlurality = true;
-				}
-			}
-		}
-		process(false); // Abstain
-		process(undefined); // No vote
-		return rtn;
-	});
-
-	function castVote(vote: string | false) {
-		getRound();
-		if(vote === myVote.value) {
-			// Clicked their current vote again; retract it
-			sendServer('retractVote').then(() => myVote.value = undefined);
-		} else {
-			sendServer('castVote', vote).then(() => myVote.value = vote);
-		}
-	}
-
-	const hiddenVote = ref<string | undefined>(undefined);
-	function startHiddenVote() {
-		getRound();
-		if(myVote.value !== undefined) {
-			// They already voted; retract it
-			castVote(myVote.value);
-		}
-		hiddenVote.value = '';
-		hotkeys.setScope('vote');
-	}
-	function castHiddenVote() {
-		const round = getRound();
-		const search = hiddenVote.value;
-		if(search === undefined) {
-			return;
-		}
-		hiddenVote.value = undefined;
-		hotkeys.setScope('');
-		let vote: string | false;
-		// Look for exact matches. If none, then try substring matches (this avoids problems like trying to vote '1' when '13' is also an option)
-		if(search == '') {
-			return;
-		} else if(search == '-') {
-			vote = false;
-		} else if(round.options.indexOf(search) >= 0) {
-			vote = search;
-		} else {
-			const matches = round.options.filter(opt => opt.includes(search));
-			if(matches.length == 0) {
-				message.error("Hidden vote does not fit any option", 5);
-				return;
-			} else if(matches.length > 1) {
-				message.error("Hidden vote matches multiple options; be more specific", 5);
-				return;
+// Wrapper around store.socket.emit() that converts the callback into a Promise, and shows a popup when the response is an error.
+// This does assume the callback is last, the typing doesn't enforce it.
+function sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveCallbackParam<EventParams<ClientToServer, Ev>>): PromisifyCallbackParam<EventParams<ClientToServer, Ev>> {
+	const arr = params as any;
+	//@ts-ignore
+	return new Promise((resolve, reject) => {
+		// Add the missing callback argument and have it resolve/reject the promise depending on the value it's called with
+		arr.push((res: any) => {
+			if (isErrorObject(res)) {
+				message.error(res.error, 5);
+				reject(res.error);
 			} else {
-				vote = matches[1];
+				resolve(res);
 			}
-		}
-		castVote(vote);
-	}
-	function cancelHiddenVote() {
-		hiddenVote.value = undefined;
-		hotkeys.setScope('');
-	}
-	onUnmounted(() => hotkeys.setScope(''));
-	hotkeys('*', 'vote', e => {
-		if(hiddenVote.value !== undefined && e.key.length == 1) {
-			hiddenVote.value += e.key;
-		}
+		});
+		store.socket.emit(event, ...arr);
 	});
-	hotkeys('enter', 'vote', () => {
-		if(hiddenVote.value !== undefined) {
-			castHiddenVote();
-		}
-	});
-	hotkeys('escape', 'vote', () => cancelHiddenVote());
+}
 
-	function setStoryPoints(points: number) {
-		if(isErrorObject(session.value) || !session.value.round) {
-			throw new Error("No round");
-		} else if(!session.value.round.jiraIssue || isErrorObject(session.value.round.jiraIssue)) {
-			throw new Error("No JIRA issue");
+function getRound(): Round {
+	if (isErrorObject(session.value) || !session.value.round) {
+		throw new Error("No round");
+	}
+	return session.value.round;
+}
+
+function startRound() {
+	newRound.loading = true;
+	newRound.error = undefined;
+	sendServer('startRound', newRound.description, newRound.options, newRound.jiraIssue ? store.jira!.auth : undefined)
+		.then(() => {
+			newRound.description = '';
+		})
+		.finally(() => {
+			newRound.loading = false;
+		});
+}
+
+function endRound() {
+	sendServer('endRound');
+}
+
+function clearRound() {
+	sendServer('clearRound');
+}
+
+function restartRound() {
+	const { description, options, jiraIssue } = getRound();
+	sendServer('startRound', description, options, jiraIssue ? store.jira!.auth : undefined);
+}
+
+let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
+store.socket.on('updateSession', val => session.value = val);
+let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
+let myVote = ref<false | string | undefined>();
+
+function checkAutoEnd() {
+	if (isOwner.value && settings.autoEnd && !isErrorObject(session.value)) {
+		const round = session.value.round;
+		if (round && session.value.members.every(member => round.votes[member.key] === true)) {
+			setTimeout(() => endRound(), 1);
 		}
-		const key = session.value.round.jiraIssue.key;
-		sendServer('setStoryPoints', points, store.jira!.auth).then(() => {
-			message.success(`Set ${key}'s story points to ${points}`, 5);
+	}
+}
+
+watch(session, newVal => {
+	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
+		myVote.value = undefined;
+	}
+	checkAutoEnd();
+});
+watch(settings, () => checkAutoEnd());
+
+interface Vote {
+	user: JiraUser;
+	vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
+}
+
+const memberVotesColumns = computed<TableColumnProps<Vote>[]>(() => {
+	const rtn: TableColumnProps<Vote>[] = [{
+		dataIndex: 'user',
+		title: 'Member',
+		defaultSortOrder: 'ascend',
+		sorter: {
+			compare(a, b) {
+				return a.user.displayName.localeCompare(b.user.displayName);
+			},
+		}
+	}];
+	if (!isErrorObject(session.value) && session.value.round) {
+		rtn.push({
+			dataIndex: 'vote',
+			title: 'Vote',
+			width: 300,
 		});
 	}
+	return rtn;
+});
+
+let memberVotesData = computed<Vote[]>(() => {
+	if (isErrorObject(session.value)) {
+		return [];
+	}
+	const round = session.value.round;
+	return session.value.members.map(user => ({
+		user,
+		vote: round?.votes[user.key],
+	}));
+});
+
+interface VoteMembers {
+	vote: false | string | undefined;
+	voters: JiraUser[];
+	isPlurality: boolean;
+}
+
+const voteMembersColumns: TableColumnProps[] = [{
+	dataIndex: 'vote',
+	title: 'Vote',
+	width: 300,
+}, {
+	dataIndex: 'voters',
+	title: 'Voters',
+}];
+
+let voteMembersData = computed<VoteMembers[]>(() => {
+	if (isErrorObject(session.value) || !session.value.round || !session.value.round.done) {
+		return [];
+	}
+	const rtn: VoteMembers[] = [];
+	let largest = 0;
+	function process(option: string | false | undefined) {
+		const voters: JiraUser[] = [];
+		for (const vote of memberVotesData.value) {
+			if (vote.vote === option) {
+				voters.push(vote.user);
+			}
+		}
+		if (voters.length > 0) {
+			rtn.push({
+				vote: option,
+				voters,
+				isPlurality: false,
+			});
+			if (voters.length > largest) {
+				largest = voters.length;
+			}
+		}
+	}
+	for (const option of session.value.round.options) {
+		process(option);
+	}
+	// Checking for the plurality is done before processing abstentions/no votes so they can't win
+	if (largest > 0) {
+		for (const e of rtn) {
+			if (e.voters.length == largest) {
+				e.isPlurality = true;
+			}
+		}
+	}
+	process(false); // Abstain
+	process(undefined); // No vote
+	return rtn;
+});
+
+function castVote(vote: string | false) {
+	getRound();
+	if (vote === myVote.value) {
+		// Clicked their current vote again; retract it
+		sendServer('retractVote').then(() => myVote.value = undefined);
+	} else {
+		sendServer('castVote', vote).then(() => myVote.value = vote);
+	}
+}
+
+const hiddenVote = ref<string | undefined>(undefined);
+function startHiddenVote() {
+	getRound();
+	if (myVote.value !== undefined) {
+		// They already voted; retract it
+		castVote(myVote.value);
+	}
+	hiddenVote.value = '';
+	hotkeys.setScope('vote');
+}
+function castHiddenVote() {
+	const round = getRound();
+	const search = hiddenVote.value;
+	if (search === undefined) {
+		return;
+	}
+	hiddenVote.value = undefined;
+	hotkeys.setScope('');
+	let vote: string | false;
+	// Look for exact matches. If none, then try substring matches (this avoids problems like trying to vote '1' when '13' is also an option)
+	if (search == '') {
+		return;
+	} else if (search == '-') {
+		vote = false;
+	} else if (round.options.indexOf(search) >= 0) {
+		vote = search;
+	} else {
+		const matches = round.options.filter(opt => opt.includes(search));
+		if (matches.length == 0) {
+			message.error("Hidden vote does not fit any option", 5);
+			return;
+		} else if (matches.length > 1) {
+			message.error("Hidden vote matches multiple options; be more specific", 5);
+			return;
+		} else {
+			vote = matches[1];
+		}
+	}
+	castVote(vote);
+}
+function cancelHiddenVote() {
+	hiddenVote.value = undefined;
+	hotkeys.setScope('');
+}
+onUnmounted(() => hotkeys.setScope(''));
+hotkeys('*', 'vote', e => {
+	if (hiddenVote.value !== undefined && e.key.length == 1) {
+		hiddenVote.value += e.key;
+	}
+});
+hotkeys('enter', 'vote', () => {
+	if (hiddenVote.value !== undefined) {
+		castHiddenVote();
+	}
+});
+hotkeys('escape', 'vote', () => cancelHiddenVote());
+
+function setStoryPoints(points: number) {
+	if (isErrorObject(session.value) || !session.value.round) {
+		throw new Error("No round");
+	} else if (!session.value.round.jiraIssue || isErrorObject(session.value.round.jiraIssue)) {
+		throw new Error("No JIRA issue");
+	}
+	const key = session.value.round.jiraIssue.key;
+	sendServer('setStoryPoints', points, store.jira!.auth).then(() => {
+		message.success(`Set ${key}'s story points to ${points}`, 5);
+	});
+}
 </script>
 
 <template>
@@ -399,7 +399,7 @@
 					<a-form-item label="Options">
 						<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />
 						<div class="button-bar">
-							<a-button v-for="set in options" @click="newRound.options = [ ...set.options ]">{{ set.name }}</a-button>
+							<a-button v-for="set in options" @click="newRound.options = [...set.options]">{{ set.name }}</a-button>
 							<a-button @click="newRound.options = []">Clear</a-button>
 						</div>
 					</a-form-item>
@@ -419,58 +419,61 @@
 </template>
 
 <style lang="less" scoped>
-	.description {
-		border: 1px solid #aaa;
-		border-radius: 10px;
-		margin: 10px 0;
-		padding: 10px;
-		.ant-card {
-			margin-top: 10px;
-		}
-	}
+.description {
+	border: 1px solid #aaa;
+	border-radius: 10px;
+	margin: 10px 0;
+	padding: 10px;
 
-	.button-bar {
-		margin: 5px 0;
-		display: flex;
-		gap: 5px;
-
-		.ant-btn-primary:disabled {
-			background-color: #1890ff;
-			color: #fff;
-		}
+	.ant-card {
+		margin-top: 10px;
 	}
+}
 
-	.vote-tables, .round-settings-panels {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-		margin: 10px 0;
-	}
+.button-bar {
+	margin: 5px 0;
+	display: flex;
+	gap: 5px;
 
-	.voters {
-		display: flex;
-		gap: 5px;
+	.ant-btn-primary:disabled {
+		background-color: #1890ff;
+		color: #fff;
 	}
+}
 
-	.ant-alert {
-		margin: 5px 0;
-	}
+.vote-tables,
+.round-settings-panels {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+	margin: 10px 0;
+}
 
-	.push-to-jira {
-		float: right;
-		> i:not(:first-child) {
-			margin-left: 2px;
-		}
-	}
+.voters {
+	display: flex;
+	gap: 5px;
+}
 
-	.switches {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 10px;
-	}
+.ant-alert {
+	margin: 5px 0;
+}
 
-	.ant-btn.green {
-		background-color: #52c41a;
-		border-color: #52c41a;
+.push-to-jira {
+	float: right;
+
+	>i:not(:first-child) {
+		margin-left: 2px;
 	}
+}
+
+.switches {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 10px;
+}
+
+.ant-btn.green {
+	background-color: #52c41a;
+	border-color: #52c41a;
+}
 </style>

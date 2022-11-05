@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-	const props = defineProps<{
-		vote: string | boolean | null;
-		roundOver: boolean;
-	}>();
+const props = defineProps<{
+	vote: string | boolean | null;
+	roundOver: boolean;
+}>();
 </script>
 
 <template>

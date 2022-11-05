@@ -36,11 +36,11 @@ const def = defineStore('store', {
 		},
 		getLogin(): Promise<JiraUser> {
 			return new Promise(resolve => {
-				if(this.jira) {
+				if (this.jira) {
 					return resolve(this.jira.user);
 				}
 				const unsubscribe = this.$subscribe((mutation, state) => {
-					if(state.jira) {
+					if (state.jira) {
 						unsubscribe();
 						return resolve(state.jira.user);
 					}
@@ -49,7 +49,7 @@ const def = defineStore('store', {
 		},
 	},
 });
-export default function() {
+export default function () {
 	const store = def();
 	store.socket.on('connect', () => {
 		// Wait to set server.connected until we've tried to load the login info
@@ -64,10 +64,10 @@ export default function() {
 
 		const token = window.localStorage.getItem('jiraToken');
 		const secret = window.localStorage.getItem('jiraSecret');
-		if(token && secret) {
+		if (token && secret) {
 			const auth: JiraAuth = { token, secret };
 			store.socket.emit('jiraGetUser', auth, user => {
-				if(isErrorObject(user)) {
+				if (isErrorObject(user)) {
 					window.localStorage.removeItem('jiraToken');
 					window.localStorage.removeItem('jiraSecret');
 				} else {
@@ -98,7 +98,7 @@ export default function() {
 		});
 	});
 	useRouter().afterEach((to, from, failure) => {
-		if(!isNavigationFailure(failure)) {
+		if (!isNavigationFailure(failure)) {
 			store.socket.emit('setPathname', to.path);
 		}
 	});

@@ -17,7 +17,7 @@ const configJoi = joi.object({
 
 const obj = JSON.parse(fs.readFileSync('config.json', 'utf8'));
 const { error, value } = configJoi.validate(obj);
-if(error) {
+if (error) {
 	throw new Error(`Failed to parse configuration file: ${error.message}`);
 }
 
