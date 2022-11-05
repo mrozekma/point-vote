@@ -13,6 +13,8 @@
 		"@hapi/joi": "^17.1.1",
 		"ant-design-vue": "^3.2.5",
 		"hotkeys-js": "^3.9.4",
+		"image-type": "^5.1.0",
+		"is-svg": "^4.3.2",
 		"jira-client": "^8.1.0",
 		"node-oauth": "^0.3.0",
 		"oauth": "^0.9.15",

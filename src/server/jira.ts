@@ -4,6 +4,8 @@ import JiraApi from 'jira-client';
 // @ts-ignore
 import { OAuth } from 'oauth';
 import { Socket } from 'socket.io';
+import imageType from 'image-type';
+import isSvg from 'is-svg';
 
 import config from './config';
 import { ClientToServer, JiraAuth, JiraIssue, JiraUser, ServerToClient } from '../events';
@@ -22,10 +24,11 @@ if (!config.jira.strictSSL) {
 }
 
 function makeJiraApi(auth: JiraAuth): JiraApi {
-	const { protocol, hostname, port } = jiraUrl;
+	const { protocol, hostname, port, pathname } = jiraUrl;
 	return new JiraApi({
 		protocol,
 		host: hostname,
+		base: pathname,
 		port,
 		oauth: {
 			consumer_key: config.jira.consumerKey,
@@ -110,7 +113,7 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 				key: info.key,
 				name: info.name,
 				displayName: info.displayName,
-				avatar: (() => {
+				avatar: await (async () => {
 					// This is really annoying. Why would they format avatarUrls like this.
 					if (!info.avatarUrls || Object.entries(info.avatarUrls).length == 0) {
 						return undefined;
@@ -121,7 +124,31 @@ export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 							largest = k;
 						}
 					}
-					return info.avatarUrls[largest];
+					const url: string = info.avatarUrls[largest];
+					{
+						const { protocol, host, port } = new URL(url);
+						if (jiraUrl.protocol !== protocol || jiraUrl.host !== host || jiraUrl.port !== port) {
+							return url;
+						}
+					}
+					// If the avatar is hosted by Jira and Jira doesn't allow anonymous access, the user's browser won't be able to do a cross-site request for the avatar, it'll just get a generic image back.
+					// Instead, request the image data here and return a blob URL.
+					try {
+						// @ts-ignore doRequest() and makeRequestHeader() are private
+						const data: Buffer = await jira.doRequest(jira.makeRequestHeader(url, { encoding: null }));
+						let type: { mime: string } | undefined = await imageType(data);
+						if (!type) {
+							if (isSvg(data)) {
+								type = { mime: 'image/svg+xml' };
+							} else {
+								return undefined;
+							}
+						}
+						return `data:${type.mime};base64,${data.toString('base64')}`;
+					} catch (e) {
+						console.error(e);
+						return undefined;
+					}
 				})(),
 			};
 			socket.data.user = user;
