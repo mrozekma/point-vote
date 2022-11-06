@@ -62,14 +62,24 @@ export class Session {
 		}
 	}
 
-	public startRound(description: string, options: string[], jiraIssue: JiraIssue | ErrorObject | undefined) {
+	public startRound(description: string, options: string[], settings: Round['settings'], jiraIssue: JiraIssue | ErrorObject | undefined) {
 		this.round = {
-			description, options, jiraIssue,
+			description, options, jiraIssue, settings,
 			done: false,
 			votes: {},
+			originalVotes: {},
 			oldMembers: [],
 		};
 		this.changed();
+	}
+
+	public setRoundSettings(settings: Round['settings']) {
+		if (!this.round) {
+			throw new Error("No round");
+		}
+		this.round.settings = settings;
+		this.changed();
+		this.checkRoundOver();
 	}
 
 	public endRound() {
@@ -80,6 +90,15 @@ export class Session {
 		this.changed();
 	}
 
+	private checkRoundOver() {
+		if (!this.round) {
+			throw new Error("No round");
+		}
+		if (this.round.settings.autoEnd && this.members.every(member => this.round!.votes[member.key] !== undefined)) {
+			this.endRound();
+		}
+	}
+
 	public clearRound() {
 		this.round = undefined;
 		this.changed();
@@ -88,15 +107,19 @@ export class Session {
 	public castVote(user: JiraUser, vote: string | false) {
 		if (!this.round) {
 			throw new Error("No round");
-		} else if (this.round.done) {
+		} else if (this.round.done && !this.round.settings.revoting) {
 			throw new Error("Round is over");
 		} else if (typeof vote === 'string' && this.round.options.indexOf(vote) < 0) {
 			throw new Error("Invalid vote");
 		} else if (!this.members.some(member => member.key == user.key)) {
 			throw new Error("Not a member of the session");
 		}
+		if (this.round.done && this.round.originalVotes[user.key] === undefined) {
+			this.round.originalVotes[user.key] = (this.round.votes[user.key] as string | false | undefined) ?? false;
+		}
 		this.round.votes[user.key] = vote;
 		this.changed();
+		this.checkRoundOver();
 	}
 
 	public retractVote(user: JiraUser) {
@@ -134,10 +157,10 @@ export class Session {
 	}
 
 	public roundToJson(): Round | undefined {
-		if (!this.round || this.round.done) {
+		if (!this.round || this.round.done || !this.round.settings.hideMidRound) {
 			return this.round;
 		}
-		// For an in-progress round, hide vote values
+		// If requested, hide the votes in an in-progress round
 		const votes = Object.fromEntries(Object.entries(this.round.votes).map(([k, v]) => [k, true]));
 		return {
 			...this.round,
@@ -245,7 +268,7 @@ export default class Sessions extends EventEmitter {
 			}
 		}
 
-		socket.on('startRound', (description, options, jiraAuth, cb) => {
+		socket.on('startRound', (description, options, settings: Round['settings'], jiraAuth, cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
 				description = description.trim();
 				if (!description) {
@@ -265,7 +288,13 @@ export default class Sessions extends EventEmitter {
 						};
 					}
 				}
-				session.startRound(description, options, jiraIssue);
+				session.startRound(description, options, settings, jiraIssue);
+				cb(undefined);
+			});
+		});
+		socket.on('setRoundSettings', (settings, cb) => {
+			getSessionAndUser(cb, true, true, (session, user) => {
+				session.setRoundSettings(settings);
 				cb(undefined);
 			});
 		});

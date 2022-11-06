@@ -50,9 +50,15 @@ export interface Round {
 	description: string;
 	jiraIssue: JiraIssue | ErrorObject | undefined;
 	options: string[];
+	settings: {
+		autoEnd: boolean;
+		hideMidRound: boolean;
+		revoting: boolean;
+	};
 	done: boolean;
 	oldMembers: JiraUser[];
 	votes: { [JiraUserId: string]: string | boolean }; // True for a hidden vote, false for abstentions
+	originalVotes: { [JiraUserId: string]: string | false };
 }
 
 export interface SessionFullJson extends SessionJson {
@@ -70,7 +76,8 @@ export interface ClientToServer {
 	getSession(id: string, cb: Callback<SessionFullJson>): void;
 	getSessions(cb: Callback<SessionJson[]>): void;
 
-	startRound(description: string, options: string[], jiraAuth: JiraAuth | undefined, cb: Callback<undefined>): void;
+	startRound(description: string, options: string[], settings: Round['settings'], jiraAuth: JiraAuth | undefined, cb: Callback<undefined>): void;
+	setRoundSettings(settings: Round['settings'], cb: Callback<undefined>): void;
 	endRound(cb: Callback<undefined>): void;
 	clearRound(cb: Callback<undefined>): void;
 	castVote(vote: string | false, cb: Callback<undefined>): void;

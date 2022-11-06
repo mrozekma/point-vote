@@ -52,7 +52,7 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 	const issue = await jira.getIssue(key, undefined, 'renderedFields');
 	return {
 		key,
-		url: `${jiraUrl}browse/${key}`,
+		url: `${jiraUrl}${jiraUrl.pathname ? '/' : ''}browse/${key}`,
 		summary: issue.fields.summary,
 		descriptionHtml: issue.renderedFields.description,
 		storyPoints: config.jira.storyPointsFieldName ? issue.fields[config.jira.storyPointsFieldName] ?? undefined : undefined,

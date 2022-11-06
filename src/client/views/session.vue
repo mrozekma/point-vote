@@ -40,9 +40,24 @@ function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
 	return new Promise(resolve => store.socket.emit('getSession', id, resolve));
 }
 
-const settings = reactive({
-	autoEnd: false,
-	hideSelf: false,
+const settings = reactive((() => {
+	const saved: { [K: string]: boolean } = JSON.parse(localStorage.getItem('settings') ?? '{}');
+	return {
+		autoEnd: saved['autoEnd'] ?? true,
+		hideMidRound: saved['hideMidRound'] ?? true,
+		revoting: saved['revoting'] ?? true,
+		hideSelf: saved['hideSelf'] ?? false,
+	};
+})());
+
+watch(settings, newSettings => {
+	localStorage.setItem('settings', JSON.stringify(newSettings));
+	try {
+		getRound();
+	} catch (e) {
+		return;
+	}
+	sendServer('setRoundSettings', newSettings);
 });
 
 interface Option {
@@ -56,6 +71,9 @@ const options: Option[] = [{
 }, {
 	name: 'Confidence' as const,
 	options: ['1', '2', '3', '4', '5'],
+}, {
+	name: 'Boolean' as const,
+	options: ['Yes', 'No'],
 }];
 
 const newRound = reactive({
@@ -98,7 +116,7 @@ function getRound(): Round {
 function startRound() {
 	newRound.loading = true;
 	newRound.error = undefined;
-	sendServer('startRound', newRound.description, newRound.options, newRound.jiraIssue ? store.jira!.auth : undefined)
+	sendServer('startRound', newRound.description, newRound.options, settings, newRound.jiraIssue ? store.jira!.auth : undefined)
 		.then(() => {
 			newRound.description = '';
 		})
@@ -117,7 +135,7 @@ function clearRound() {
 
 function restartRound() {
 	const { description, options, jiraIssue } = getRound();
-	sendServer('startRound', description, options, jiraIssue ? store.jira!.auth : undefined);
+	sendServer('startRound', description, options, settings, jiraIssue ? store.jira!.auth : undefined);
 }
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
@@ -126,26 +144,16 @@ store.socket.on('endSession', _ => router.push('/'));
 let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
 let myVote = ref<false | string | undefined>();
 
-function checkAutoEnd() {
-	if (isOwner.value && settings.autoEnd && !isErrorObject(session.value)) {
-		const round = session.value.round;
-		if (round && session.value.members.every(member => round.votes[member.key] === true)) {
-			setTimeout(() => endRound(), 1);
-		}
-	}
-}
-
 watch(session, newVal => {
 	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 		myVote.value = undefined;
 	}
-	checkAutoEnd();
 });
-watch(settings, () => checkAutoEnd());
 
 interface Vote {
 	user: JiraUser;
 	vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
+	previousVote: false | string | undefined;
 	stillHere: boolean;
 }
 
@@ -179,6 +187,7 @@ let memberVotesData = computed<Vote[]>(() => {
 		...session.value.members.map(user => ({
 			user,
 			vote: round?.votes[user.key],
+			previousVote: round?.originalVotes[user.key],
 			stillHere: true,
 		})),
 	];
@@ -188,6 +197,7 @@ let memberVotesData = computed<Vote[]>(() => {
 			if (vote !== undefined) {
 				rtn.push({
 					user, vote,
+					previousVote: round.originalVotes[user.key],
 					stillHere: false,
 				});
 			}
@@ -212,7 +222,7 @@ const voteMembersColumns: TableColumnProps[] = [{
 }];
 
 let voteMembersData = computed<VoteMembers[]>(() => {
-	if (isErrorObject(session.value) || !session.value.round || !session.value.round.done) {
+	if (isErrorObject(session.value) || !session.value.round || (session.value.round.settings.hideMidRound && !session.value.round.done)) {
 		return [];
 	}
 	const rtn: VoteMembers[] = [];
@@ -364,8 +374,8 @@ function setStoryPoints(points: number) {
 				<a-button v-else size="large" loading @click="cancelHiddenVote">Type your vote and press Enter</a-button>
 			</template>
 			<div v-else class="button-bar">
-				<a-button v-for="option in session.round.options" :disabled="session.round.done" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
-				<a-button :disabled="session.round.done" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
+				<a-button v-for="option in session.round.options" :disabled="session.round.done && !session.round.settings.revoting" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
+				<a-button :disabled="session.round.done && !session.round.settings.revoting" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
 			</div>
 			<div v-if="isOwner" class="button-bar">
 				<template v-if="!session.round.done">
@@ -387,6 +397,10 @@ function setStoryPoints(points: number) {
 						<pv-user v-bind="text" :badge="!record.stillHere ? 'skull' : record.vote !== undefined ? 'tick' : undefined" />
 					</template>
 					<template v-else-if="column.dataIndex == 'vote'">
+						<div v-if="record.previousVote !== undefined && record.previousVote !== record.vote" class="previous-vote">
+							<pv-vote-tag :vote="record.previousVote" round-over />
+							<i class="fas fa-arrow-right"></i>
+						</div>
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
 					</template>
 				</template>
@@ -437,6 +451,8 @@ function setStoryPoints(points: number) {
 			<a-card title="Settings" size="small">
 				<div class="switches">
 					<a-switch v-model:checked="settings.autoEnd" /> Automatically end the round when everyone has voted.
+					<a-switch v-model:checked="settings.hideMidRound" /> Hide votes until the round ends.
+					<a-switch v-model:checked="settings.revoting" /> Allow revoting after round ends.
 					<a-switch v-model:checked="settings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
 				</div>
 			</a-card>
@@ -501,5 +517,17 @@ function setStoryPoints(points: number) {
 .ant-btn.green {
 	background-color: #52c41a;
 	border-color: #52c41a;
+}
+
+.previous-vote {
+	display: inline-block;
+
+	>.ant-tag {
+		text-decoration: line-through;
+	}
+
+	>i {
+		margin-right: 8px;
+	}
 }
 </style>
