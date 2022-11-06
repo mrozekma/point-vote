@@ -51,6 +51,9 @@ sessions.on('sessions-changed', sessions => {
 sessions.on('session-changed', session => {
 	io.to(`session/${session.id}`).emit('updateSession', session.toFullJson());
 });
+sessions.on('session-ended', id => {
+	io.to(`session/${id}`).emit('endSession', id);
+});
 
 io.listen(3001); //TODO Config
 console.log('Ready');

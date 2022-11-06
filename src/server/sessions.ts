@@ -31,7 +31,7 @@ export class Session {
 				...user,
 				count: 1,
 			});
-			if (this.removeTimer) {
+			if (this.removeTimer && user.key === this.owner.key) {
 				clearTimeout(this.removeTimer);
 				this.removeTimer = undefined;
 			}
@@ -44,7 +44,7 @@ export class Session {
 		if (idx >= 0) {
 			if (--this.members[idx].count == 0) {
 				this.members.splice(idx, 1);
-				if (this.members.length == 0) {
+				if (user.key === this.owner.key) {
 					this.removeTimer = setTimeout(() => this.sessions.remove(this), REMOVE_EMPTY_SESSION_MS);
 				}
 			}
@@ -118,6 +118,7 @@ export class Session {
 		return {
 			id, name, owner, members,
 			created: created.toJSON(),
+			alive: (this.removeTimer === undefined),
 		};
 	}
 
@@ -184,11 +185,8 @@ export default class Sessions extends EventEmitter {
 	}
 
 	public remove(session: Session) {
-		// Double-check that the session is empty
-		if (session.members.length > 0) {
-			throw new Error("Can't remove non-empty session");
-		}
 		if (this.sessions.delete(session.id)) {
+			this.emit('session-ended', session.id);
 			this.sessionsChanged();
 		}
 	}
@@ -295,12 +293,14 @@ export default class Sessions extends EventEmitter {
 
 	public on(eventName: 'session-changed', listener: (session: Session) => void): this;
 	public on(eventName: 'sessions-changed', listener: (sessions: Session[]) => void): this;
+	public on(eventName: 'session-ended', listener: (id: string) => void): this;
 	public on(eventName: string | symbol, listener: (...args: any[]) => void): this {
 		return super.on(eventName, listener);
 	}
 
 	public emit(eventName: 'session-changed', session: Session): boolean;
 	public emit(eventName: 'sessions-changed', sessions: Session[]): boolean;
+	public emit(eventName: 'session-ended', id: string): boolean;
 	public emit(eventName: string | symbol, ...args: any[]): boolean {
 		return super.emit(eventName, ...args);
 	}

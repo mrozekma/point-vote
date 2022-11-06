@@ -2,7 +2,7 @@
 import { message, TableColumnProps } from 'ant-design-vue';
 import hotkeys from 'hotkeys-js';
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import PvUser from '../components/user.vue';
 import PvVoteTag from '../components/vote-tag.vue';
@@ -19,6 +19,7 @@ interface EventsMap { [event: string]: any; }
 type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
 type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
 
+const router = useRouter();
 const route = useRoute();
 const store = useStore();
 
@@ -121,6 +122,7 @@ function restartRound() {
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
 store.socket.on('updateSession', val => session.value = val);
+store.socket.on('endSession', _ => router.push('/'));
 let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
 let myVote = ref<false | string | undefined>();
 
@@ -314,11 +316,19 @@ function setStoryPoints(points: number) {
 </script>
 
 <template>
-	<a-result v-if="isErrorObject(session)" status="404" title="Not found" :sub-title="session.error" />
+	<a-result v-if="isErrorObject(session)" status="404" title="Not found">
+		<template #subTitle>
+			<div>
+				{{ session.error }}
+			</div><br>
+			<a-button type="primary" @click="router.push('/')">Home</a-button>
+		</template>
+	</a-result>
 	<template v-else>
 		<h1>{{ session.name }}</h1>
 
-		<template v-if="session.round">
+		<a-alert v-if="!session.alive" type="warning" message="Session ending" description="The session owner has disconnected. The session will close shortly." show-icon />
+		<template v-else-if="session.round">
 			<div class="description">
 				{{ session.round.description }}
 				<template v-if="session.round.jiraIssue">

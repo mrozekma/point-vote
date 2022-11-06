@@ -32,6 +32,7 @@ export type Iso8601 = string;
 export interface SessionJson {
 	id: string;
 	name: string;
+	alive: boolean;
 	owner: JiraUser;
 	created: Iso8601;
 	members: JiraUser[];
@@ -79,4 +80,5 @@ export interface ClientToServer {
 export interface ServerToClient {
 	updateSession(session: SessionFullJson): void;
 	updateSessions(sessions: SessionJson[]): void;
+	endSession(id: string): void;
 }
