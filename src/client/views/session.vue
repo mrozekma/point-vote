@@ -146,6 +146,7 @@ watch(settings, () => checkAutoEnd());
 interface Vote {
 	user: JiraUser;
 	vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
+	stillHere: boolean;
 }
 
 const memberVotesColumns = computed<TableColumnProps<Vote>[]>(() => {
@@ -174,10 +175,25 @@ let memberVotesData = computed<Vote[]>(() => {
 		return [];
 	}
 	const round = session.value.round;
-	return session.value.members.map(user => ({
-		user,
-		vote: round?.votes[user.key],
-	}));
+	const rtn: Vote[] = [
+		...session.value.members.map(user => ({
+			user,
+			vote: round?.votes[user.key],
+			stillHere: true,
+		})),
+	];
+	if (round) {
+		for (const user of round.oldMembers) {
+			const vote = round.votes[user.key];
+			if (vote !== undefined) {
+				rtn.push({
+					user, vote,
+					stillHere: false,
+				});
+			}
+		}
+	}
+	return rtn;
 });
 
 interface VoteMembers {
@@ -368,7 +384,7 @@ function setStoryPoints(points: number) {
 			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false">
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'user'">
-						<pv-user v-bind="text" :badge="record.vote !== undefined ? 'tick' : undefined" />
+						<pv-user v-bind="text" :badge="!record.stillHere ? 'skull' : record.vote !== undefined ? 'tick' : undefined" />
 					</template>
 					<template v-else-if="column.dataIndex == 'vote'">
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />

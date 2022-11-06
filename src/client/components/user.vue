@@ -9,7 +9,7 @@ const props = withDefaults(defineProps<{
 	avatar?: string;
 	size?: 'default' | 'small' | 'large';
 	iconOnly?: boolean;
-	badge?: 'tick' | 'user' | undefined;
+	badge?: 'tick' | 'user' | 'skull' | undefined;
 }>(), {
 	size: 'default',
 	iconOnly: false,
@@ -33,6 +33,7 @@ const color = computed<string>(() => uniqolor(props.displayName).color);
 			<template #count>
 				<i v-if="props.badge === 'tick'" class="fas fa-check-circle opaque"></i>
 				<i v-else-if="props.badge === 'user'" class="fas fa-user-circle opaque"></i>
+				<i v-else-if="props.badge === 'skull'" class="fas fa-skull opaque"></i>
 			</template>
 			<component :is="props.iconOnly ? 'a-tooltip' : 'div'" placement="bottom" :title="props.displayName">
 				<a-avatar v-if="props.avatar" :size="props.size" shape="square" :src="props.avatar" />

@@ -31,6 +31,13 @@ export class Session {
 				...user,
 				count: 1,
 			});
+			if (this.round?.votes[user.key]) {
+				delete this.round.votes[user.key];
+			}
+			const idx = this.round?.oldMembers?.findIndex(seek => seek.key === user.key);
+			if (idx !== undefined && idx >= 0) {
+				this.round!.oldMembers.splice(idx, 1);
+			}
 			if (this.removeTimer && user.key === this.owner.key) {
 				clearTimeout(this.removeTimer);
 				this.removeTimer = undefined;
@@ -44,6 +51,9 @@ export class Session {
 		if (idx >= 0) {
 			if (--this.members[idx].count == 0) {
 				this.members.splice(idx, 1);
+				if (this.round && !this.round.oldMembers.find(seek => seek.key === user.key)) {
+					this.round.oldMembers.push(user);
+				}
 				if (user.key === this.owner.key) {
 					this.removeTimer = setTimeout(() => this.sessions.remove(this), REMOVE_EMPTY_SESSION_MS);
 				}
@@ -57,6 +67,7 @@ export class Session {
 			description, options, jiraIssue,
 			done: false,
 			votes: {},
+			oldMembers: [],
 		};
 		this.changed();
 	}

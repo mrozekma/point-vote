@@ -51,6 +51,7 @@ export interface Round {
 	jiraIssue: JiraIssue | ErrorObject | undefined;
 	options: string[];
 	done: boolean;
+	oldMembers: JiraUser[];
 	votes: { [JiraUserId: string]: string | boolean }; // True for a hidden vote, false for abstentions
 }
 
