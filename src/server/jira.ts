@@ -28,7 +28,7 @@ function makeJiraApi(auth: JiraAuth): JiraApi {
 	return new JiraApi({
 		protocol,
 		host: hostname,
-		base: pathname,
+		base: (pathname == '/') ? undefined : pathname,
 		port,
 		oauth: {
 			consumer_key: config.jira.consumerKey,
@@ -52,7 +52,7 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 	const issue = await jira.getIssue(key, undefined, 'renderedFields');
 	return {
 		key,
-		url: `${jiraUrl}${jiraUrl.pathname ? '/' : ''}browse/${key}`,
+		url: `${jiraUrl}${jiraUrl.toString().endsWith('/') ? '' : '/'}browse/${key}`,
 		summary: issue.fields.summary,
 		descriptionHtml: issue.renderedFields.description,
 		storyPoints: config.jira.storyPointsFieldName ? issue.fields[config.jira.storyPointsFieldName] ?? undefined : undefined,
