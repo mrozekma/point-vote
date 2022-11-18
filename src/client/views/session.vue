@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { message, TableColumnProps } from 'ant-design-vue';
 import hotkeys from 'hotkeys-js';
+import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -9,15 +10,6 @@ import PvVoteTag from '../components/vote-tag.vue';
 
 import { ClientToServer, ErrorObject, isErrorObject, JiraUser, Round, SessionFullJson } from '../../events';
 import useStore from '../store';
-
-// Vite refuses to let me do this:
-//   import { EventNames, EventParams } from 'socket.io/dist/typed-events';
-// I get:
-//   ERROR: [plugin: vite:dep-scan] Missing "./dist/typed-events" export in "socket.io" package
-// So I copied the types I care about:
-interface EventsMap { [event: string]: any; }
-type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
-type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
 
 const router = useRouter();
 const route = useRoute();
@@ -376,6 +368,16 @@ function setStoryPoints(points: number) {
 			<div v-else class="button-bar">
 				<a-button v-for="option in session.round.options" :disabled="session.round.done && !session.round.settings.revoting" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
 				<a-button :disabled="session.round.done && !session.round.settings.revoting" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
+				<a-popover class="round-settings" placement="bottomRight">
+					<template #content>
+						<div class="switches">
+							<a-switch disabled :checked="session.round.settings.autoEnd" /> Automatically end the round when everyone has voted.
+							<a-switch disabled :checked="session.round.settings.hideMidRound" /> Hide votes until the round ends.
+							<a-switch disabled :checked="session.round.settings.revoting" /> Allow revoting after round ends.
+						</div>
+					</template>
+					<i class="far fa-info-square"></i>
+				</a-popover>
 			</div>
 			<div v-if="isOwner" class="button-bar">
 				<template v-if="!session.round.done">
@@ -480,6 +482,11 @@ function setStoryPoints(points: number) {
 	.ant-btn-primary:disabled {
 		background-color: #1890ff;
 		color: #fff;
+	}
+
+	.round-settings {
+		position: absolute;
+		right: 20px;
 	}
 }
 
