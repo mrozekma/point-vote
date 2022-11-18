@@ -1,7 +1,7 @@
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 
 import config from './config';
-import { ClientToServer, JiraUser, ServerToClient } from '../events';
+import { ClientToServer, ServerToClient } from '../events';
 import { hookSocket as jiraHookSocket } from './jira';
 import Sessions, { Session } from './sessions';
 
@@ -55,5 +55,5 @@ sessions.on('session-ended', id => {
 	io.to(`session/${id}`).emit('endSession', id);
 });
 
-io.listen(3001); //TODO Config
-console.log('Ready');
+io.listen(config.server.websocketPort);
+console.log(`Ready, frontend ${config.server.url}, websocket port ${config.server.websocketPort}`);
