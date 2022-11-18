@@ -38,6 +38,7 @@ const settings = reactive((() => {
 		autoEnd: saved['autoEnd'] ?? true,
 		hideMidRound: saved['hideMidRound'] ?? true,
 		revoting: saved['revoting'] ?? true,
+		anonymize: saved['anonymize'] ?? false,
 		hideSelf: saved['hideSelf'] ?? false,
 	};
 })());
@@ -137,13 +138,13 @@ let isOwner = computed(() => !isErrorObject(session.value) && session.value.owne
 let myVote = ref<false | string | undefined>();
 
 watch(session, newVal => {
-	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
+	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (!newVal.round.settings.anonymize && store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 		myVote.value = undefined;
 	}
 });
 
 interface Vote {
-	user: JiraUser;
+	user: JiraUser | undefined;
 	vote: boolean | string | undefined; // undefined for no vote yet, true for hidden vote, false for abstention
 	previousVote: false | string | undefined;
 	stillHere: boolean;
@@ -156,11 +157,11 @@ const memberVotesColumns = computed<TableColumnProps<Vote>[]>(() => {
 		defaultSortOrder: 'ascend',
 		sorter: {
 			compare(a, b) {
-				return a.user.displayName.localeCompare(b.user.displayName);
+				return (!a.user && !b.user) ? 0 : !a.user ? 1 : !b.user ? -1 : a.user.displayName.localeCompare(b.user.displayName);
 			},
 		}
 	}];
-	if (!isErrorObject(session.value) && session.value.round) {
+	if (!isErrorObject(session.value) && session.value.round && !session.value.round.settings.anonymize) {
 		rtn.push({
 			dataIndex: 'vote',
 			title: 'Vote',
@@ -200,7 +201,7 @@ let memberVotesData = computed<Vote[]>(() => {
 
 interface VoteMembers {
 	vote: false | string | undefined;
-	voters: JiraUser[];
+	voters: (JiraUser | undefined)[];
 	isPlurality: boolean;
 }
 
@@ -217,17 +218,28 @@ let voteMembersData = computed<VoteMembers[]>(() => {
 	if (isErrorObject(session.value) || !session.value.round || (session.value.round.settings.hideMidRound && !session.value.round.done)) {
 		return [];
 	}
+	const round = session.value.round;
 	const rtn: VoteMembers[] = [];
 	let largest = 0;
 	function process(option: string | false | undefined) {
-		const voters: JiraUser[] = [];
-		for (const vote of memberVotesData.value) {
-			if (vote.vote === option) {
-				voters.push(vote.user);
+		const voters: (JiraUser | undefined)[] = [];
+		if (!round.settings.anonymize) {
+			for (const vote of memberVotesData.value) {
+				if (vote.vote === option) {
+					voters.push(vote.user);
+				}
 			}
+		} else if (option !== undefined) {
+			for (const vote of round.anonymousVotes) {
+				if (vote === option) {
+					voters.push(undefined);
+				}
+			}
+		} else {
+			voters.push(...new Array(memberVotesData.value.length - round.anonymousVotes.length));
 		}
 		if (voters.length > 0) {
-			voters.sort((a, b) => a.displayName.localeCompare(b.displayName));
+			voters.sort((a, b) => (!a && !b) ? 0 : !a ? 1 : !b ? -1 : a.displayName.localeCompare(b.displayName));
 			rtn.push({
 				vote: option,
 				voters,
@@ -238,7 +250,7 @@ let voteMembersData = computed<VoteMembers[]>(() => {
 			}
 		}
 	}
-	for (const option of session.value.round.options) {
+	for (const option of round.options) {
 		process(option);
 	}
 	// Checking for the plurality is done before processing abstentions/no votes so they can't win
@@ -375,6 +387,7 @@ function setStoryPoints(points: number) {
 							<a-switch disabled :checked="session.round.settings.autoEnd" /> Automatically end the round when everyone has voted.
 							<a-switch disabled :checked="session.round.settings.hideMidRound" /> Hide votes until the round ends.
 							<a-switch disabled :checked="session.round.settings.revoting" /> Allow revoting after round ends.
+							<a-switch disabled :checked="settings.anonymize" /> Anonymize voter identities.
 						</div>
 					</template>
 					<i class="far fa-info-square"></i>
@@ -421,7 +434,7 @@ function setStoryPoints(points: number) {
 					</template>
 					<template v-else-if="column.dataIndex == 'voters'">
 						<div class="voters">
-							<pv-user v-for="voter in text" v-bind="voter" icon-only />
+							<pv-user v-for="voter in text" v-bind="voter ?? { name: 'anon', displayName: 'Anonymous', anonymous: true }" icon-only />
 						</div>
 					</template>
 				</template>
@@ -456,6 +469,7 @@ function setStoryPoints(points: number) {
 					<a-switch v-model:checked="settings.autoEnd" /> Automatically end the round when everyone has voted.
 					<a-switch v-model:checked="settings.hideMidRound" /> Hide votes until the round ends.
 					<a-switch v-model:checked="settings.revoting" /> Allow revoting after round ends.
+					<a-switch v-model:checked="settings.anonymize" /> Anonymize voter identities.
 					<a-switch v-model:checked="settings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
 				</div>
 			</a-card>

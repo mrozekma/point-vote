@@ -68,6 +68,7 @@ export class Session {
 			done: false,
 			votes: {},
 			originalVotes: {},
+			anonymousVotes: [],
 			oldMembers: [],
 		};
 		this.changed();
@@ -76,6 +77,9 @@ export class Session {
 	public setRoundSettings(settings: Round['settings']) {
 		if (!this.round) {
 			throw new Error("No round");
+		}
+		if (this.round.settings.anonymize && !settings.anonymize) {
+			throw new Error("Can't unanonymize a round in-progress");
 		}
 		this.round.settings = settings;
 		this.changed();
@@ -157,15 +161,19 @@ export class Session {
 	}
 
 	public roundToJson(): Round | undefined {
-		if (!this.round || this.round.done || !this.round.settings.hideMidRound) {
-			return this.round;
+		if (!this.round) {
+			return undefined;
 		}
-		// If requested, hide the votes in an in-progress round
-		const votes = Object.fromEntries(Object.entries(this.round.votes).map(([k, v]) => [k, true]));
-		return {
-			...this.round,
-			votes,
-		};
+		let round = { ...this.round };
+		if (this.round.settings.hideMidRound && !this.round.done) {
+			round.votes = Object.fromEntries(Object.entries(this.round.votes).map(([k, v]) => [k, true]));
+		}
+		if (this.round.settings.anonymize) {
+			round.anonymousVotes = Object.values(round.votes);
+			round.votes = {};
+			round.originalVotes = {};
+		}
+		return round;
 	}
 
 	public toFullJson(): SessionFullJson {

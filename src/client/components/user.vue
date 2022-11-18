@@ -6,11 +6,13 @@ const props = withDefaults(defineProps<{
 	key?: any; // This is present in JiraUser so this makes it easy to v-bind a JiraUser object
 	name: string;
 	displayName: string;
+	anonymous?: boolean;
 	avatar?: string;
 	size?: 'default' | 'small' | 'large';
 	iconOnly?: boolean;
 	badge?: 'tick' | 'user' | 'skull' | undefined;
 }>(), {
+	anonymous: false,
 	size: 'default',
 	iconOnly: false,
 });
@@ -36,7 +38,12 @@ const color = computed<string>(() => uniqolor(props.displayName).color);
 				<i v-else-if="props.badge === 'skull'" class="fas fa-skull opaque"></i>
 			</template>
 			<component :is="props.iconOnly ? 'a-tooltip' : 'div'" placement="bottom" :title="props.displayName">
-				<a-avatar v-if="props.avatar" :size="props.size" shape="square" :src="props.avatar" />
+				<a-avatar v-if="props.anonymous" :size="props.size" shape="square">
+					<template #icon>
+						<i class="fas fa-question"></i>
+					</template>
+				</a-avatar>
+				<a-avatar v-else-if="props.avatar" :size="props.size" shape="square" :src="props.avatar" />
 				<a-avatar v-else :size="props.size" shape="square" :style="{ backgroundColor: color }">{{ initials }}</a-avatar>
 			</component>
 		</component>

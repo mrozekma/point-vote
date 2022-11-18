@@ -54,11 +54,13 @@ export interface Round {
 		autoEnd: boolean;
 		hideMidRound: boolean;
 		revoting: boolean;
+		anonymize: boolean;
 	};
 	done: boolean;
 	oldMembers: JiraUser[];
 	votes: { [JiraUserId: string]: string | boolean }; // True for a hidden vote, false for abstentions
 	originalVotes: { [JiraUserId: string]: string | false };
+	anonymousVotes: (string | boolean)[];
 }
 
 export interface SessionFullJson extends SessionJson {
