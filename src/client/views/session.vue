@@ -227,6 +227,7 @@ let voteMembersData = computed<VoteMembers[]>(() => {
 			}
 		}
 		if (voters.length > 0) {
+			voters.sort((a, b) => a.displayName.localeCompare(b.displayName));
 			rtn.push({
 				vote: option,
 				voters,
