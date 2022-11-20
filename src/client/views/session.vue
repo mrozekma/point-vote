@@ -452,8 +452,8 @@ function setStoryPoints(points: number) {
 						<a-tooltip v-if="record.isPlurality" placement="bottom" title="Plurality">
 							<i class="fas fa-medal"></i>
 						</a-tooltip>
-						<a-tooltip v-if="isOwner && session.round!.jiraIssue && !isErrorObject(session.round!.jiraIssue) && typeof text === 'string' && /^[0-9]+$/.test(text)" placement="bottom" title="Set the issue's story points to this value">
-							<a-button size="small" class="push-to-jira" @click="setStoryPoints(parseInt(text))"><i class="fas fa-arrow-right"></i><i class="fab fa-jira"></i></a-button>
+						<a-tooltip v-if="isOwner && session.round!.jiraIssue && !isErrorObject(session.round!.jiraIssue) && typeof text === 'string' && /^[0-9.]+$/.test(text)" placement="bottom" title="Set the issue's story points to this value">
+							<a-button size="small" class="push-to-jira" @click="setStoryPoints(parseFloat(text))"><i class="fas fa-arrow-right"></i><i class="fab fa-jira"></i></a-button>
 						</a-tooltip>
 					</template>
 					<template v-else-if="column.dataIndex == 'voters'">
