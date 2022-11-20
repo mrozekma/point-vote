@@ -266,6 +266,30 @@ let voteMembersData = computed<VoteMembers[]>(() => {
 	return rtn;
 });
 
+let voteStats = computed(() => {
+	if (isErrorObject(session.value) || !session.value.round) {
+		return undefined;
+	}
+	const options = session.value.round.options.map(n => parseFloat(n));
+	if (options.some(isNaN)) {
+		return undefined;
+	}
+
+	const numericVotes = voteMembersData.value.filter(v => typeof (v.vote) === 'string').map(v => ({ ...v, vote: parseFloat(v.vote as string) }));
+	if (numericVotes.length === 0) {
+		return undefined;
+	}
+
+	const min = Math.min(...numericVotes.map(v => v.vote));
+	const max = Math.max(...numericVotes.map(v => v.vote));
+	// Should the number of votes include abstentions? It feels like no.
+	const numVotes = numericVotes.reduce((acc, v) => acc + v.voters.length, 0);
+	const mean = numericVotes.reduce((acc, v) => acc + v.vote * v.voters.length, 0) / numVotes;
+	const modes = numericVotes.filter(v => v.isPlurality).map(v => v.vote);
+	const stddev = Math.sqrt(numericVotes.reduce((acc, v) => acc + Math.pow(v.vote - mean, 2) * v.voters.length, 0) / numVotes)
+	return { min, max, numVotes, mean, modes, stddev };
+});
+
 function castVote(vote: string | false) {
 	getRound();
 	if (vote === myVote.value) {
@@ -407,7 +431,7 @@ function setStoryPoints(points: number) {
 		<a-alert v-else type="info" message="Waiting for next round" show-icon />
 
 		<div class="vote-tables">
-			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false">
+			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false" bordered>
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'user'">
 						<pv-user v-bind="text" :badge="!record.stillHere ? 'skull' : record.vote !== undefined ? 'tick' : undefined" />
@@ -421,7 +445,7 @@ function setStoryPoints(points: number) {
 					</template>
 				</template>
 			</a-table>
-			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false" :locale="{ emptyText: 'Waiting for round to end' }">
+			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false" :locale="{ emptyText: 'Waiting for round to end' }" bordered>
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'vote'">
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
@@ -437,6 +461,16 @@ function setStoryPoints(points: number) {
 							<pv-user v-for="voter in text" v-bind="voter ?? { name: 'anon', displayName: 'Anonymous', anonymous: true }" icon-only />
 						</div>
 					</template>
+				</template>
+				<template #footer v-if="voteStats">
+					<div v-if="voteStats" class="vote-stats">
+						<a-statistic title="Votes" :value="voteStats.numVotes" />
+						<a-statistic title="Min" :value="voteStats.min" />
+						<a-statistic title="Max" :value="voteStats.max" />
+						<a-statistic title="Mean" :value="voteStats.mean" :precision="2" />
+						<a-statistic :title="(voteStats.modes.length == 1) ? 'Mode' : 'Modes'" :value="voteStats.modes.join(', ')" />
+						<a-statistic title="Std. Dev." :value="voteStats.stddev" :precision="2" />
+					</div>
 				</template>
 			</a-table>
 		</div>
@@ -511,6 +545,19 @@ function setStoryPoints(points: number) {
 	grid-template-columns: 1fr 1fr;
 	gap: 10px;
 	margin: 10px 0;
+}
+
+.vote-stats {
+	display: flex;
+	gap: 10px;
+
+	* {
+		flex-grow: 1;
+	}
+
+	/deep/ .ant-statistic-content {
+		font-size: 12pt;
+	}
 }
 
 .voters {
