@@ -132,10 +132,26 @@ function restartRound() {
 }
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
-store.socket.on('updateSession', val => session.value = val);
-store.socket.on('endSession', _ => router.push('/'));
 let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
 let myVote = ref<false | string | undefined>();
+let showPushDialog = ref(false);
+
+store.socket.on('updateSession', val => session.value = val);
+store.socket.on('endSession', _ => router.push('/'));
+store.socket.on('pushNewRoundDescription', (description, isJira, optionSet) => {
+	if(isOwner.value) {
+		newRound.description = description;
+		if(isJira !== undefined) {
+			newRound.jiraIssue = isJira
+		}
+		if(optionSet !== undefined) {
+			const opt = options.find(opt => opt.name === optionSet)
+			if(opt) {
+				newRound.options = opt.options;
+			}
+		}
+	}
+});
 
 watch(session, newVal => {
 	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (!newVal.round.settings.anonymize && store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
@@ -495,6 +511,7 @@ function setStoryPoints(points: number) {
 					</a-form-item>
 				</a-form>
 				<a-button type="primary" htmlType="submit" @click="startRound" :loading="newRound.loading">Start</a-button>
+				<a-button type="dashed" style="float: right" @click="showPushDialog = true">How to push from Jira</a-button>
 				<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
 			</a-card>
 
@@ -507,6 +524,20 @@ function setStoryPoints(points: number) {
 					<a-switch v-model:checked="settings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
 				</div>
 			</a-card>
+
+			<!-- This hardcodes some stuff that technically is controlled by the Jira admin, but I doubt anyone uses this app but me, so oh well -->
+			<a-modal v-model:visible="showPushDialog" title="Pushing from Jira">
+				You can now push issues from Jira to Point Vote instead of copy/pasting the key or URL. To do this:<br><br>
+				<ul>
+					<li>Start a session in Point Vote. You can only have one active session for this feature to work.</li>
+					<li>In another tab, navigate to the Jira issue.</li>
+					<li>From the <b>More</b> menu, select <b>Send to Point Vote</b>. This will likely be at the very bottom of the menu.</li>
+					<li>Return to the Point Vote tab. You should see the Jira issue's key filled in as the next round description.</li>
+				</ul>
+				<template #footer>
+					<a-button @click="showPushDialog = false">Close</a-button>
+				</template>
+			</a-modal>
 		</div>
 	</template>
 </template>

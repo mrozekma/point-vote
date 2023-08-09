@@ -13,6 +13,10 @@ const configJoi = joi.object({
 		storyPointsFieldName: joi.string(),
 		strictSSL: joi.boolean().default(true),
 	}).required(),
+	api: joi.object({
+		port: joi.number().required(),
+		auth: joi.string(),
+	}),
 }).required();
 
 const obj = JSON.parse(fs.readFileSync('config.json', 'utf8'));
