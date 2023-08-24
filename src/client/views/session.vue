@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import { message, TableColumnProps } from 'ant-design-vue';
 import hotkeys from 'hotkeys-js';
-import { EventNames, EventParams } from 'socket.io/dist/typed-events';
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -10,6 +9,12 @@ import PvVoteTag from '../components/vote-tag.vue';
 
 import { ClientToServer, ErrorObject, isErrorObject, JiraUser, Round, SessionFullJson } from '../../events';
 import useStore from '../store';
+
+// Importing these types from socket.io keeps causing random transient build problems I'm tired of, so they're copy/pasted here:
+// import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+interface EventsMap { [event: string]: any }
+declare type EventNames<Map extends EventsMap> = keyof Map & (string | symbol);
+declare type EventParams<Map extends EventsMap, Ev extends EventNames<Map>> = Parameters<Map[Ev]>;
 
 const router = useRouter();
 const route = useRoute();
