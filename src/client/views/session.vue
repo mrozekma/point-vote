@@ -49,10 +49,8 @@ const roundSettings = reactive((() => {
 
 watch(roundSettings, newSettings => {
 	localStorage.setItem('settings', JSON.stringify(newSettings));
-	try {
-		getRound();
-	} catch (e) {
-		return;
+	if(isRoundActive()) {
+		sendServer('setRoundSettings', newSettings);
 	}
 });
 
@@ -60,6 +58,7 @@ const userSettings = reactive((() => {
 	const saved: { [K: string]: boolean } = JSON.parse(localStorage.getItem('userSettings') ?? '{}');
 	return {
 		hideSelf: saved['hideSelf'] ?? false,
+		autoAbstain: saved['autoAbstain'] ?? false,
 	};
 })());
 
@@ -176,9 +175,19 @@ store.socket.on('pushNewRoundDescription', (description, isJira, optionSet) => {
 	}
 });
 
-watch(session, newVal => {
+watch(session, (newVal, oldVal) => {
 	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (!newVal.round.settings.anonymize && store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 		myVote.value = undefined;
+	}
+	const newRoundStarted = ((isErrorObject(oldVal) || !oldVal.round) && !isErrorObject(newVal) && newVal.round !== undefined);
+	if(newRoundStarted && userSettings.autoAbstain && myVote.value === undefined) {
+		castVote(false);
+	}
+});
+
+watch(() => userSettings.autoAbstain, newVal => {
+	if(newVal && isRoundActive() && myVote.value === undefined) {
+		castVote(false);
 	}
 });
 
@@ -551,6 +560,7 @@ function setStoryPoints(points: number) {
 			<a-card title="User settings" size="small">
 				<div class="switches">
 					<a-switch v-model:checked="userSettings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
+					<a-switch v-model:checked="userSettings.autoAbstain" /> Automatically abstain (intended when going away, or if you hate planning).
 				</div>
 			</a-card>
 
