@@ -37,25 +37,34 @@ function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
 	return new Promise(resolve => store.socket.emit('getSession', id, resolve));
 }
 
-const settings = reactive((() => {
+const roundSettings = reactive((() => {
 	const saved: { [K: string]: boolean } = JSON.parse(localStorage.getItem('settings') ?? '{}');
 	return {
 		autoEnd: saved['autoEnd'] ?? true,
 		hideMidRound: saved['hideMidRound'] ?? true,
 		revoting: saved['revoting'] ?? true,
 		anonymize: saved['anonymize'] ?? false,
-		hideSelf: saved['hideSelf'] ?? false,
 	};
 })());
 
-watch(settings, newSettings => {
+watch(roundSettings, newSettings => {
 	localStorage.setItem('settings', JSON.stringify(newSettings));
 	try {
 		getRound();
 	} catch (e) {
 		return;
 	}
-	sendServer('setRoundSettings', newSettings);
+});
+
+const userSettings = reactive((() => {
+	const saved: { [K: string]: boolean } = JSON.parse(localStorage.getItem('userSettings') ?? '{}');
+	return {
+		hideSelf: saved['hideSelf'] ?? false,
+	};
+})());
+
+watch(userSettings, newSettings => {
+	localStorage.setItem('userSettings', JSON.stringify(newSettings));
 });
 
 interface Option {
@@ -111,10 +120,19 @@ function getRound(): Round {
 	return session.value.round;
 }
 
+function isRoundActive(): boolean {
+	try {
+		getRound();
+		return true;
+	} catch(e) {
+		return false;
+	}
+}
+
 function startRound() {
 	newRound.loading = true;
 	newRound.error = undefined;
-	sendServer('startRound', newRound.description, newRound.options, settings, newRound.jiraIssue ? store.jira!.auth : undefined)
+	sendServer('startRound', newRound.description, newRound.options, roundSettings, newRound.jiraIssue ? store.jira!.auth : undefined)
 		.then(() => {
 			newRound.description = '';
 		})
@@ -133,7 +151,7 @@ function clearRound() {
 
 function restartRound() {
 	const { description, options, jiraIssue } = getRound();
-	sendServer('startRound', description, options, settings, jiraIssue ? store.jira!.auth : undefined);
+	sendServer('startRound', description, options, roundSettings, jiraIssue ? store.jira!.auth : undefined);
 }
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
@@ -418,7 +436,7 @@ function setStoryPoints(points: number) {
 					</a-card>
 				</template>
 			</div>
-			<template v-if="isOwner && settings.hideSelf && !session.round.done">
+			<template v-if="userSettings.hideSelf && !session.round.done">
 				<a-button v-if="myVote !== undefined" size="large" type="primary" @click="startHiddenVote">Vote cast. Click to change vote</a-button>
 				<a-button v-else-if="hiddenVote === undefined" size="large" @click="startHiddenVote">Click to vote</a-button>
 				<a-button v-else size="large" loading @click="cancelHiddenVote">Type your vote and press Enter</a-button>
@@ -426,17 +444,6 @@ function setStoryPoints(points: number) {
 			<div v-else class="button-bar">
 				<a-button v-for="option in session.round.options" :disabled="session.round.done && !session.round.settings.revoting" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
 				<a-button :disabled="session.round.done && !session.round.settings.revoting" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
-				<a-popover class="round-settings" placement="bottomRight">
-					<template #content>
-						<div class="switches">
-							<a-switch disabled :checked="session.round.settings.autoEnd" /> Automatically end the round when everyone has voted.
-							<a-switch disabled :checked="session.round.settings.hideMidRound" /> Hide votes until the round ends.
-							<a-switch disabled :checked="session.round.settings.revoting" /> Allow revoting after round ends.
-							<a-switch disabled :checked="settings.anonymize" /> Anonymize voter identities.
-						</div>
-					</template>
-					<i class="far fa-info-square"></i>
-				</a-popover>
 			</div>
 			<div v-if="isOwner" class="button-bar">
 				<template v-if="!session.round.done">
@@ -496,8 +503,8 @@ function setStoryPoints(points: number) {
 			</a-table>
 		</div>
 
-		<div v-if="isOwner" class="round-settings-panels">
-			<a-card title="Next round" size="small">
+		<div class="round-settings-panels">
+			<a-card v-if="isOwner" title="Next round" size="small">
 				<a-form class="two-col" autocomplete="off" @finish="startRound">
 					<a-form-item label="Description">
 						<a-input v-model:value="newRound.description" placeholder="JIRA key, etc." @pressEnter="startRound" />
@@ -519,14 +526,31 @@ function setStoryPoints(points: number) {
 				<a-button type="dashed" style="float: right" @click="showPushDialog = true">How to push from Jira</a-button>
 				<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
 			</a-card>
+			<div v-else></div>
 
-			<a-card title="Settings" size="small">
+			<a-card title="Round settings" size="small">
 				<div class="switches">
-					<a-switch v-model:checked="settings.autoEnd" /> Automatically end the round when everyone has voted.
-					<a-switch v-model:checked="settings.hideMidRound" /> Hide votes until the round ends.
-					<a-switch v-model:checked="settings.revoting" /> Allow revoting after round ends.
-					<a-switch v-model:checked="settings.anonymize" /> Anonymize voter identities.
-					<a-switch v-model:checked="settings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
+					<template v-if="isOwner">
+						<a-switch v-model:checked="roundSettings.autoEnd" /> Automatically end the round when everyone has voted.
+						<a-switch v-model:checked="roundSettings.hideMidRound" /> Hide votes until the round ends.
+						<a-switch v-model:checked="roundSettings.revoting" /> Allow revoting after round ends.
+						<a-switch v-model:checked="roundSettings.anonymize" /> Anonymize voter identities.
+					</template>
+					<template v-else-if="session.round">
+						<a-switch disabled :checked="session.round.settings.autoEnd" /> Automatically end the round when everyone has voted.
+						<a-switch disabled :checked="session.round.settings.hideMidRound" /> Hide votes until the round ends.
+						<a-switch disabled :checked="session.round.settings.revoting" /> Allow revoting after round ends.
+						<a-switch disabled :checked="session.round.settings.anonymize" /> Anonymize voter identities.
+					</template>
+					<template v-else>
+						No round in progress
+					</template>
+				</div>
+			</a-card>
+
+			<a-card title="User settings" size="small">
+				<div class="switches">
+					<a-switch v-model:checked="userSettings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
 				</div>
 			</a-card>
 
@@ -568,19 +592,21 @@ function setStoryPoints(points: number) {
 		background-color: #1890ff;
 		color: #fff;
 	}
-
-	.round-settings {
-		position: absolute;
-		right: 20px;
-	}
 }
 
 .vote-tables,
 .round-settings-panels {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
 	gap: 10px;
 	margin: 10px 0;
+}
+
+.vote-tables {
+	grid-template-columns: 1fr 1fr;
+}
+
+.round-settings-panels {
+	grid-template-columns: 2fr 1fr 1fr;
 }
 
 .vote-stats {
