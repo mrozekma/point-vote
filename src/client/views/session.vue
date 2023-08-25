@@ -4,6 +4,7 @@ import hotkeys from 'hotkeys-js';
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import PvHelp from '../components/help.vue';
 import PvUser from '../components/user.vue';
 import PvVoteTag from '../components/vote-tag.vue';
 
@@ -44,6 +45,7 @@ const roundSettings = reactive((() => {
 		hideMidRound: saved['hideMidRound'] ?? true,
 		revoting: saved['revoting'] ?? true,
 		anonymize: saved['anonymize'] ?? false,
+		autoStartRoundOnPush: saved['autoStartRoundOnPush'] ?? true,
 	};
 })());
 
@@ -156,7 +158,6 @@ function restartRound() {
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
 let isOwner = computed(() => !isErrorObject(session.value) && session.value.owner.key === store.jira?.user.key);
 let myVote = ref<false | string | undefined>();
-let showPushDialog = ref(false);
 
 store.socket.on('updateSession', val => session.value = val);
 store.socket.on('endSession', _ => router.push('/'));
@@ -171,6 +172,9 @@ store.socket.on('pushNewRoundDescription', (description, isJira, optionSet) => {
 			if(opt) {
 				newRound.options = opt.options;
 			}
+		}
+		if(!isRoundActive() && roundSettings.autoStartRoundOnPush) {
+			startRound();
 		}
 	}
 });
@@ -450,7 +454,7 @@ function setStoryPoints(points: number) {
 				<a-button v-else-if="hiddenVote === undefined" size="large" @click="startHiddenVote">Click to vote</a-button>
 				<a-button v-else size="large" loading @click="cancelHiddenVote">Type your vote and press Enter</a-button>
 			</template>
-			<div v-else class="button-bar">
+			<div v-else class="button-bar votes">
 				<a-button v-for="option in session.round.options" :disabled="session.round.done && !session.round.settings.revoting" :type="option === myVote ? 'primary' : 'default'" @click="castVote(option)">{{ option }}</a-button>
 				<a-button :disabled="session.round.done && !session.round.settings.revoting" :type="myVote === false ? 'primary' : 'default'" @click="castVote(false)">Abstain</a-button>
 			</div>
@@ -468,7 +472,7 @@ function setStoryPoints(points: number) {
 		<a-alert v-else type="info" message="Waiting for next round" show-icon />
 
 		<div class="vote-tables">
-			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false" bordered>
+			<a-table :data-source="memberVotesData" :columns="memberVotesColumns" :pagination="false" bordered style="grid-area: members">
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'user'">
 						<pv-user v-bind="text" :badge="!record.stillHere ? 'skull' : record.vote !== undefined ? 'tick' : undefined" />
@@ -482,7 +486,8 @@ function setStoryPoints(points: number) {
 					</template>
 				</template>
 			</a-table>
-			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false" :locale="{ emptyText: 'Waiting for round to end' }" bordered>
+
+			<a-table :data-source="voteMembersData" :columns="voteMembersColumns" :pagination="false" :locale="{ emptyText: session.round ? 'Waiting for round to end' : 'Waiting for next round' }" bordered style="grid-area: votes">
 				<template #bodyCell="{ column, text, record }">
 					<template v-if="column.dataIndex == 'vote'">
 						<pv-vote-tag :vote="text ?? null" :round-over="session.round!.done" />
@@ -510,10 +515,8 @@ function setStoryPoints(points: number) {
 					</div>
 				</template>
 			</a-table>
-		</div>
 
-		<div class="round-settings-panels">
-			<a-card v-if="isOwner" title="Next round" size="small">
+			<a-card v-if="isOwner" title="Next round" size="small" style="grid-area: next-round">
 				<a-form class="two-col" autocomplete="off" @finish="startRound">
 					<a-form-item label="Description">
 						<a-input v-model:value="newRound.description" placeholder="JIRA key, etc." @pressEnter="startRound" />
@@ -532,51 +535,47 @@ function setStoryPoints(points: number) {
 					</a-form-item>
 				</a-form>
 				<a-button type="primary" htmlType="submit" @click="startRound" :loading="newRound.loading">Start</a-button>
-				<a-button type="dashed" style="float: right" @click="showPushDialog = true">How to push from Jira</a-button>
 				<a-alert v-if="newRound.error" message="Error" :description="newRound.error" type="error" show-icon />
 			</a-card>
-			<div v-else></div>
 
-			<a-card title="Round settings" size="small">
+			<a-card title="Round settings" size="small" style="grid-area: round-settings">
 				<div class="switches">
 					<template v-if="isOwner">
 						<a-switch v-model:checked="roundSettings.autoEnd" /> Automatically end the round when everyone has voted.
 						<a-switch v-model:checked="roundSettings.hideMidRound" /> Hide votes until the round ends.
 						<a-switch v-model:checked="roundSettings.revoting" /> Allow revoting after round ends.
 						<a-switch v-model:checked="roundSettings.anonymize" /> Anonymize voter identities.
+						<a-switch v-model:checked="roundSettings.autoStartRoundOnPush" /> <span>
+							Automatically start new round on Jira push.
+							<pv-help dialog="Pushing from Jira">
+								<!-- This hardcodes some stuff that technically is controlled by the Jira admin, but I doubt anyone uses this app but me, so oh well -->
+								You can now push issues from Jira to Point Vote instead of copy/pasting the key or URL. To do this:<br><br>
+								<ul>
+									<li>Start a session in Point Vote. You can only have one active session for this feature to work.</li>
+									<li>In another tab, navigate to the Jira issue.</li>
+									<li>From the <b>More</b> menu, select <b>Send to Point Vote</b>. This will likely be at the very bottom of the menu.</li>
+									<li>Return to the Point Vote tab. If the "automatically start new round" option is selected, you should see a new round for voting on the Jira issue. Otherwise, you should see the Jira issue's key filled in as the next round description.</li>
+								</ul>
+							</pv-help>
+						</span>
 					</template>
 					<template v-else-if="session.round">
 						<a-switch disabled :checked="session.round.settings.autoEnd" /> Automatically end the round when everyone has voted.
 						<a-switch disabled :checked="session.round.settings.hideMidRound" /> Hide votes until the round ends.
 						<a-switch disabled :checked="session.round.settings.revoting" /> Allow revoting after round ends.
 						<a-switch disabled :checked="session.round.settings.anonymize" /> Anonymize voter identities.
+						<a-switch disabled :checked="session.round.settings.autoStartRoundOnPush" /> Automatically start new round on Jira push.
 					</template>
-					<template v-else>
-						No round in progress
-					</template>
+					<a-alert v-else type="info" message="Waiting for next round" show-icon />
 				</div>
 			</a-card>
 
-			<a-card title="User settings" size="small">
+			<a-card title="User settings" size="small" style="grid-area: user-settings">
 				<div class="switches">
-					<a-switch v-model:checked="userSettings.hideSelf" /> Hide your vote on your screen (intended for screen sharing).
-					<a-switch v-model:checked="userSettings.autoAbstain" /> Automatically abstain (intended when going away, or if you hate planning).
+					<a-switch v-model:checked="userSettings.hideSelf" /> <span>Hide your vote on your screen. <pv-help>The is intended for when you are sharing your screen with others in the session. You will type your vote instead of clicking a button.</pv-help></span>
+					<a-switch v-model:checked="userSettings.autoAbstain" /> <span>Automatically abstain. <pv-help>This is intended for when you're walking away briefly. Or if you hate planning.</pv-help></span>
 				</div>
 			</a-card>
-
-			<!-- This hardcodes some stuff that technically is controlled by the Jira admin, but I doubt anyone uses this app but me, so oh well -->
-			<a-modal v-model:visible="showPushDialog" title="Pushing from Jira">
-				You can now push issues from Jira to Point Vote instead of copy/pasting the key or URL. To do this:<br><br>
-				<ul>
-					<li>Start a session in Point Vote. You can only have one active session for this feature to work.</li>
-					<li>In another tab, navigate to the Jira issue.</li>
-					<li>From the <b>More</b> menu, select <b>Send to Point Vote</b>. This will likely be at the very bottom of the menu.</li>
-					<li>Return to the Point Vote tab. You should see the Jira issue's key filled in as the next round description.</li>
-				</ul>
-				<template #footer>
-					<a-button @click="showPushDialog = false">Close</a-button>
-				</template>
-			</a-modal>
 		</div>
 	</template>
 </template>
@@ -602,21 +601,20 @@ function setStoryPoints(points: number) {
 		background-color: #1890ff;
 		color: #fff;
 	}
-}
 
-.vote-tables,
-.round-settings-panels {
-	display: grid;
-	gap: 10px;
-	margin: 10px 0;
+	&.votes .ant-btn {
+		min-width: 50px;
+	}
 }
 
 .vote-tables {
-	grid-template-columns: 1fr 1fr;
-}
-
-.round-settings-panels {
+	display: grid;
+	gap: 10px;
+	margin: 10px 0;
 	grid-template-columns: 2fr 1fr 1fr;
+	grid-template-areas:
+		"members votes votes"
+		"next-round round-settings user-settings";
 }
 
 .vote-stats {
@@ -653,6 +651,10 @@ function setStoryPoints(points: number) {
 	display: grid;
 	grid-template-columns: auto 1fr;
 	gap: 10px;
+
+	.ant-alert {
+		grid-column-end: span 2;
+	}
 }
 
 .ant-btn.green {

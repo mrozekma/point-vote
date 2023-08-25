@@ -55,6 +55,7 @@ export interface Round {
 		hideMidRound: boolean;
 		revoting: boolean;
 		anonymize: boolean;
+		autoStartRoundOnPush: boolean;
 	};
 	done: boolean;
 	oldMembers: JiraUser[];
