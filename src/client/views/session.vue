@@ -86,7 +86,6 @@ const options: Option[] = [{
 
 const newRound = reactive({
 	description: '',
-	jiraIssue: true,
 	options: [...options[0].options],
 	loading: false,
 	error: undefined as string | undefined,
@@ -133,7 +132,7 @@ function isRoundActive(): boolean {
 function startRound() {
 	newRound.loading = true;
 	newRound.error = undefined;
-	sendServer('startRound', newRound.description, newRound.options, roundSettings, newRound.jiraIssue ? store.jira!.auth : undefined)
+	sendServer('startRound', newRound.description, newRound.options, roundSettings, store.jira!.auth)
 		.then(() => {
 			newRound.description = '';
 		})
@@ -151,8 +150,8 @@ function clearRound() {
 }
 
 function restartRound() {
-	const { description, options, jiraIssue } = getRound();
-	sendServer('startRound', description, options, roundSettings, jiraIssue ? store.jira!.auth : undefined);
+	const { description, options } = getRound();
+	sendServer('startRound', description, options, roundSettings, store.jira!.auth);
 }
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
@@ -520,11 +519,6 @@ function setStoryPoints(points: number) {
 				<a-form class="two-col" autocomplete="off" @finish="startRound">
 					<a-form-item label="Description">
 						<a-input v-model:value="newRound.description" placeholder="JIRA key, etc." @pressEnter="startRound" />
-					</a-form-item>
-					<a-form-item label="JIRA">
-						<div class="switches">
-							<a-switch v-model:checked="newRound.jiraIssue" /> Show JIRA issue details (description must be a JIRA key or URL).
-						</div>
 					</a-form-item>
 					<a-form-item label="Options">
 						<a-select v-model:value="newRound.options" mode="tags" :open="false" :default-open="false" />

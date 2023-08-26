@@ -278,23 +278,17 @@ export default class Sessions extends EventEmitter {
 
 		socket.on('startRound', (description, options, settings: Round['settings'], jiraAuth, cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
-				description = description.trim();
-				if (!description) {
-					description = 'Vote';
-					jiraAuth = undefined;
-				}
+				description = description.trim() || 'Vote';
 				if (new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
 				}
 				let jiraIssue: JiraIssue | ErrorObject | undefined;
-				if (jiraAuth) {
-					try {
-						jiraIssue = await getJiraIssue(jiraAuth, description);
-					} catch (e) {
-						jiraIssue = {
-							error: `${e}`,
-						};
-					}
+				try {
+					jiraIssue = await getJiraIssue(jiraAuth, description);
+				} catch (e) {
+					jiraIssue = {
+						error: `${e}`,
+					};
 				}
 				session.startRound(description, options, settings, jiraIssue);
 				cb(undefined);

@@ -41,11 +41,11 @@ function makeJiraApi(auth: JiraAuth): JiraApi {
 	});
 }
 
-const jiraIssueRe = new RegExp(`^(?:(?:${jiraUrl.protocol}//)?${jiraUrl.host}.*/browse/)?([A-Za-z0-9-]+)$`);
-export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<JiraIssue> {
+const jiraIssueRe = new RegExp(`^(?:(?:${jiraUrl.protocol}//)?${jiraUrl.host}.*/browse/)?([A-Za-z0-9]+-[0-9]+)$`);
+export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<JiraIssue | undefined> {
 	const match = key_or_url.match(jiraIssueRe);
 	if (!match) {
-		throw new Error("Couldn't find JIRA key or URL");
+		return undefined;
 	}
 	const key = match[1].toUpperCase();
 	const jira = makeJiraApi(auth);
