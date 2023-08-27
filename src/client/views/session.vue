@@ -668,3 +668,36 @@ function setStoryPoints(points: number) {
 	}
 }
 </style>
+
+<!-- Syntax highlighting using colors from Jira -->
+<style lang="less" scoped>
+.description /deep/ .code {
+	border: 1px solid #c1c7d0;
+	background: #f4f5f7;
+	font-size: 12px;
+	font-family: monospace;
+	padding: 5px;
+
+	.code-keyword {
+		color: #910091;
+	}
+	.code-object, .code-tag {
+		color: #000091;
+	}
+	.code-macro {
+		color: #78492a;
+	}
+	.code-quote, .code-quote .code-keyword, .code-quote .code-object {
+		color: #009100;
+	}
+	.code-quote-red, .code-quote-red .code-keyword, .code-quote-red .code-object {
+		color: #910000;
+	}
+	.code-comment, .code-comment .code-keyword, .code-comment .code-object, .code-comment .code-quote, .code-comment .code-quote-red {
+		color: #808080;
+	}
+	.code-xml .code-keyword {
+		font-weight: bold;
+	}
+}
+</style>
