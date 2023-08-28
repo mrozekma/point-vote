@@ -160,12 +160,9 @@ let myVote = ref<false | string | undefined>();
 
 store.socket.on('updateSession', val => session.value = val);
 store.socket.on('endSession', _ => router.push('/'));
-store.socket.on('pushNewRoundDescription', (description, isJira, optionSet) => {
+store.socket.on('pushNewRoundDescription', (description, optionSet) => {
 	if(isOwner.value) {
 		newRound.description = description;
-		if(isJira !== undefined) {
-			newRound.jiraIssue = isJira
-		}
 		if(optionSet !== undefined) {
 			const opt = options.find(opt => opt.name === optionSet)
 			if(opt) {

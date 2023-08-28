@@ -92,5 +92,5 @@ export interface ServerToClient {
 	updateSession(session: SessionFullJson): void;
 	updateSessions(sessions: SessionJson[]): void;
 	endSession(id: string): void;
-	pushNewRoundDescription(description: string, isJira: boolean | undefined, optionSet: string | undefined): void;
+	pushNewRoundDescription(description: string, optionSet: string | undefined): void;
 }

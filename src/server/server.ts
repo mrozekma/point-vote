@@ -62,7 +62,7 @@ if(config.api) {
 	const { port, auth: expectedAuth } = config.api;
 	const apiServer = express();
 	apiServer.post('/push', (req, res) => {
-		const { auth, description, owner, session: sessionKey, jira: isJira, optionSet } = req.query;
+		const { auth, description, owner, session: sessionKey, optionSet } = req.query;
 		if(expectedAuth) {
 			if(!auth) {
 				return res.status(403).send('Missing auth');
@@ -95,7 +95,7 @@ if(config.api) {
 			return res.status(400).send("Need to specify session or owner");
 		}
 
-		io.to(`session/${session.id}`).emit('pushNewRoundDescription', description as string, isJira === 'true' ? true : isJira === 'false' ? false : undefined, optionSet as string | undefined);
+		io.to(`session/${session.id}`).emit('pushNewRoundDescription', description as string, optionSet as string | undefined);
 		return res.status(200).send("Done");
 	});
 	apiServer.listen(port);
