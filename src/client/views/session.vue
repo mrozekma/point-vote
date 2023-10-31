@@ -59,6 +59,7 @@ watch(roundSettings, newSettings => {
 const userSettings = reactive((() => {
 	const saved: { [K: string]: boolean } = JSON.parse(localStorage.getItem('userSettings') ?? '{}');
 	return {
+		roundNotifications: saved['roundNotifications'] ?? false,
 		hideSelf: saved['hideSelf'] ?? false,
 		autoAbstain: saved['autoAbstain'] ?? false,
 	};
@@ -178,9 +179,12 @@ watch(session, (newVal, oldVal) => {
 	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (!newVal.round.settings.anonymize && store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 		myVote.value = undefined;
 	}
-	const newRoundStarted = ((isErrorObject(oldVal) || !oldVal.round) && !isErrorObject(newVal) && newVal.round !== undefined);
+	const newRoundStarted = ((isErrorObject(oldVal) || !oldVal.round || oldVal.round.done) && !isErrorObject(newVal) && newVal.round !== undefined);
 	if(newRoundStarted && userSettings.autoAbstain && myVote.value === undefined) {
 		castVote(false);
+	}
+	if(newRoundStarted && userSettings.roundNotifications) {
+		browserNotification("New Round", newVal.round!.description, e => window.focus());
 	}
 });
 
@@ -415,6 +419,48 @@ function setStoryPoints(points: number) {
 		message.success(`Set ${key}'s story points to ${points}`, 5);
 	});
 }
+
+async function browserNotification(title: string, body: string, onClick?: (e: Event) => void) {
+	if(window.Notification.permission !== 'granted') {
+		return;
+	}
+	const n = new window.Notification(title, {
+		body,
+		icon: '/favicon.svg',
+	});
+	if(onClick) {
+		n.onclick = onClick;
+	}
+}
+
+const notificationsState = ref<'enabled' | 'enabling' | 'disabled'>((window.Notification?.permission === 'granted') ? 'enabled' : 'disabled');
+async function toggleRoundNotifications(checked: boolean) {
+	if(checked) {
+		if(!window.Notification) {
+			return message.error("Notifications not available in your browser");
+		}
+		notificationsState.value = 'enabling';
+		switch(await window.Notification.requestPermission()) {
+			case 'granted':
+				notificationsState.value = 'enabled';
+				userSettings.roundNotifications = true;
+				break;
+			case 'denied':
+				notificationsState.value = 'disabled';
+				if(location.protocol !== 'https:') {
+					return message.error("Notifications are disabled. This is possibly because Point Vote is not using HTTPS");
+				} else {
+					return message.error("Notifications are disabled in your browser settings for this site");
+				}
+				break;
+			default:
+				notificationsState.value = 'disabled';
+				break;
+		}
+	} else {
+		userSettings.roundNotifications = false;
+	}
+}
 </script>
 
 <template>
@@ -562,6 +608,7 @@ function setStoryPoints(points: number) {
 
 			<a-card title="User settings" size="small" style="grid-area: user-settings">
 				<div class="switches">
+					<a-switch :checked="notificationsState === 'enabled' && userSettings.roundNotifications" :loading="notificationsState === 'enabling'" @change="toggleRoundNotifications" /> <span>Show a notification when a new round starts.</span>
 					<a-switch v-model:checked="userSettings.hideSelf" /> <span>Hide your vote on your screen. <pv-help>The is intended for when you are sharing your screen with others in the session. You will type your vote instead of clicking a button.</pv-help></span>
 					<a-switch v-model:checked="userSettings.autoAbstain" /> <span>Automatically abstain. <pv-help>This is intended for when you're walking away briefly. Or if you hate planning.</pv-help></span>
 				</div>
