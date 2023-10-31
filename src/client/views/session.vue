@@ -122,8 +122,7 @@ function getRound(): Round {
 
 function isRoundActive(): boolean {
 	try {
-		getRound();
-		return true;
+		return !getRound().done;
 	} catch(e) {
 		return false;
 	}
