@@ -179,7 +179,7 @@ watch(session, (newVal, oldVal) => {
 	if (myVote.value !== undefined && (isErrorObject(newVal) || newVal.round === undefined || (!newVal.round.settings.anonymize && store.jira && newVal.round.votes[store.jira.user.key] === undefined))) {
 		myVote.value = undefined;
 	}
-	const newRoundStarted = ((isErrorObject(oldVal) || !oldVal.round || oldVal.round.done) && !isErrorObject(newVal) && newVal.round !== undefined);
+	const newRoundStarted = ((isErrorObject(oldVal) || !oldVal.round || oldVal.round.done) && !isErrorObject(newVal) && newVal.round !== undefined && !newVal.round.done);
 	if(newRoundStarted && userSettings.autoAbstain && myVote.value === undefined) {
 		castVote(false);
 	}
