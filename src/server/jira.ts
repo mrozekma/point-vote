@@ -1,8 +1,5 @@
-import fs from 'fs';
-
+import axios from 'axios';
 import JiraApi from 'jira-client';
-// @ts-ignore
-import { OAuth } from 'oauth';
 import { Socket } from 'socket.io';
 import imageType from 'image-type';
 import isSvg from 'is-svg';
@@ -10,13 +7,7 @@ import isSvg from 'is-svg';
 import config from './config';
 import { ClientToServer, JiraAuth, JiraIssue, JiraUser, ServerToClient } from '../events';
 
-interface OAuthError {
-	statusCode: number;
-	data: string;
-}
-
 const jiraUrl = new URL(config.jira.url);
-const privKey = fs.readFileSync(config.jira.privateKey, 'utf8');
 
 // Whee
 if (!config.jira.strictSSL) {
@@ -30,13 +21,14 @@ function makeJiraApi(auth: JiraAuth): JiraApi {
 		host: hostname,
 		base: (pathname == '/') ? undefined : pathname,
 		port,
-		oauth: {
-			consumer_key: config.jira.consumerKey,
-			consumer_secret: privKey,
-			access_token: auth.token,
-			access_token_secret: auth.secret,
-			signature_method: 'RSA-SHA1',
-		},
+		// oauth: {
+		// 	consumer_key: config.jira.consumerKey,
+		// 	consumer_secret: privKey,
+		// 	access_token: auth.token,
+		// 	access_token_secret: auth.secret,
+		// 	signature_method: 'RSA-SHA1',
+		// },
+		bearer: auth.token,
 		strictSSL: config.jira.strictSSL,
 	});
 }
@@ -49,7 +41,9 @@ export async function getJiraIssue(auth: JiraAuth, key_or_url: string): Promise<
 	}
 	const key = match[1].toUpperCase();
 	const jira = makeJiraApi(auth);
+	console.log(await jira.getCurrentUser());
 	const issue = await jira.getIssue(key, undefined, 'renderedFields');
+	// console.log(issue);
 	return {
 		key,
 		url: `${jiraUrl}${jiraUrl.toString().endsWith('/') ? '' : '/'}browse/${key}`,
@@ -73,33 +67,32 @@ export async function setJiraStoryPoints(auth: JiraAuth, key: string, points: nu
 
 export function hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
 	socket.on('jiraLogin', (originUrl, cb) => {
-		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', originUrl, 'RSA-SHA1');
-		oauth.getOAuthRequestToken((err: OAuthError | null, token: string, secret: string) => {
-			if (err) {
-				if (err.statusCode && err.data) {
-					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
-				} else {
-					cb({ error: `${err}` });
-				}
-			} else {
-				cb({ token, secret, url: `${jiraUrl}/plugins/servlet/oauth/authorize?oauth_token=${token}` });
-			}
-		});
+		const url = new URL(`${config.jira.url}/rest/oauth2/latest/authorize`);
+		url.searchParams.set('response_type', 'code');
+		url.searchParams.set('scope', 'WRITE');
+		url.searchParams.set('client_id', config.jira.clientId);
+		url.searchParams.set('redirect_uri', originUrl);
+		cb({ url: url.toString() });
 	});
 
-	socket.on('jiraLoginFinish', (token, secret, verifier, cb) => {
-		const oauth = new OAuth(`${jiraUrl}/plugins/servlet/oauth/request-token`, `${jiraUrl}/plugins/servlet/oauth/access-token`, config.jira.consumerKey, privKey, '1.0', null, 'RSA-SHA1');
-		oauth.getOAuthAccessToken(token, secret, verifier, (err: OAuthError | null, token: string, secret: string, results: any) => {
-			if (err) {
-				if (err.statusCode && err.data) {
-					cb({ code: err.statusCode, error: `Error ${err.statusCode}: ${err.data}` });
-				} else {
-					cb({ error: `${err}` });
-				}
+	socket.on('jiraLoginFinish', async (originUrl, code, cb) => {
+		try {
+			const res = await axios.post(`${config.jira.url}/rest/oauth2/latest/token`, new URLSearchParams({
+				client_id: config.jira.clientId,
+				client_secret: config.jira.clientSecret,
+				grant_type: 'authorization_code',
+				code,
+				redirect_uri: originUrl, // Why this is necessary is beyond me
+			}).toString());
+			const token = res.data.access_token;
+			if(typeof token === 'string') {
+				cb({ token });
 			} else {
-				cb({ token, secret });
+				cb({ error: "Bad response from Jira" });
 			}
-		});
+		} catch(e) {
+			cb({ error: `${e}` });
+		}
 	});
 
 	socket.on('jiraGetUser', async (auth, cb) => {
