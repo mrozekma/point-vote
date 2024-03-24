@@ -27,11 +27,9 @@ const def = defineStore('store', {
 		onLogin(auth: JiraAuth, user: JiraUser) {
 			this.jira = { auth, user };
 			window.localStorage.setItem('jiraToken', auth.token);
-			window.localStorage.setItem('jiraSecret', auth.secret);
 		},
 		onLogout() {
 			window.localStorage.removeItem('jiraToken');
-			window.localStorage.removeItem('jiraSecret');
 			this.jira = undefined;
 		},
 		getLogin(): Promise<JiraUser> {
@@ -63,13 +61,11 @@ export default function () {
 		}
 
 		const token = window.localStorage.getItem('jiraToken');
-		const secret = window.localStorage.getItem('jiraSecret');
-		if (token && secret) {
-			const auth: JiraAuth = { token, secret };
+		if (token) {
+			const auth: JiraAuth = { token };
 			store.socket.emit('jiraGetUser', auth, user => {
 				if (isErrorObject(user)) {
 					window.localStorage.removeItem('jiraToken');
-					window.localStorage.removeItem('jiraSecret');
 				} else {
 					store.jira = { auth, user };
 					store.socket.emit('setPathname', window.location.pathname);

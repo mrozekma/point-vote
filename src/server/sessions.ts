@@ -284,6 +284,7 @@ export default class Sessions extends EventEmitter {
 				}
 				let jiraIssue: JiraIssue | ErrorObject | undefined;
 				try {
+					console.log(jiraAuth, description);
 					jiraIssue = await getJiraIssue(jiraAuth, description);
 				} catch (e) {
 					jiraIssue = {

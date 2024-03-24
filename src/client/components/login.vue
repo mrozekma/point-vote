@@ -13,10 +13,9 @@ const error = ref<string | undefined>(undefined);
 
 function getCurrentUrlSansOauth(): string {
 	const here = new URL(window.location.href);
-	if (here.search.startsWith('?') && here.search.indexOf('oauth') > 0) {
+	if (here.search.startsWith('?') && here.search.indexOf('code') > 0) {
 		const query = qs.parse(here.search.substring(1));
-		delete query['oauth_token'];
-		delete query['oauth_verifier'];
+		delete query['code'];
 		here.search = '?' + qs.stringify(query);
 	}
 	return here.href;
@@ -24,54 +23,42 @@ function getCurrentUrlSansOauth(): string {
 
 if (window.location.search.startsWith('?')) {
 	const query = qs.parse(window.location.search.substring(1));
-	if (typeof query.oauth_token === 'string' && typeof query.oauth_verifier === 'string') {
-		const token = window.localStorage.getItem('jiraRequestToken');
-		const secret = window.localStorage.getItem('jiraRequestSecret');
+	if (typeof query.code === 'string') {
 		finishingLogin.value = true;
 		function fail(msg: string) {
 			error.value = msg;
 			finishingLogin.value = false;
 		}
-		if (!token || !secret) {
-			fail("Missing Jira login data");
-		} else {
-			window.localStorage.removeItem('jiraRequestToken');
-			window.localStorage.removeItem('jiraRequestSecret');
-			if (token !== query.oauth_token) {
-				fail("Jira login token mismatch");
-			} else if (query.oauth_verifier === 'denied') {
-				fail("Login rejected by user");
+
+		store.socket.emit('jiraLoginFinish', getCurrentUrlSansOauth(), query.code, auth => {
+			if (isErrorObject(auth)) {
+				fail(auth.error);
 			} else {
-				store.socket.emit('jiraLoginFinish', token, secret, query.oauth_verifier, auth => {
-					if (isErrorObject(auth)) {
-						fail(auth.error);
+				store.socket.emit('jiraGetUser', auth, user => {
+					if (isErrorObject(user)) {
+						fail(user.error);
 					} else {
-						store.socket.emit('jiraGetUser', auth, user => {
-							if (isErrorObject(user)) {
-								fail(user.error);
-							} else {
-								store.onLogin(auth, user);
-								finishingLogin.value = false;
-								window.history.replaceState(history.state, '', getCurrentUrlSansOauth());
-							}
-						});
+						store.onLogin(auth, user);
+						finishingLogin.value = false;
+						const pathname = localStorage.getItem('redir');
+						localStorage.removeItem('redir');
+						window.history.replaceState(history.state, '', pathname ?? getCurrentUrlSansOauth());
 					}
 				});
 			}
-		}
+		});
 	}
 }
 
 function jiraLogin() {
 	loading.value = true;
-	store.socket.emit('jiraLogin', getCurrentUrlSansOauth(), login => {
+	localStorage.setItem('redir', window.location.pathname);
+	store.socket.emit('jiraLogin', getCurrentUrlSansOauth(), res => {
 		loading.value = false;
-		if (isErrorObject(login)) {
-			error.value = login.error;
+		if (isErrorObject(res)) {
+			error.value = res.error;
 		} else {
-			window.localStorage.setItem('jiraRequestToken', login.token);
-			window.localStorage.setItem('jiraRequestSecret', login.secret);
-			window.location.href = login.url;
+			window.location.href = res.url;
 		}
 	});
 }

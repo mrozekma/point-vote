@@ -8,8 +8,8 @@ const configJoi = joi.object({
 	}).required(),
 	jira: joi.object({
 		url: joi.string().required(),
-		consumerKey: joi.string().required(),
-		privateKey: joi.string().required(),
+		clientId: joi.string().required(),
+		clientSecret: joi.string().required(),
 		storyPointsFieldName: joi.string(),
 		strictSSL: joi.boolean().default(true),
 	}).required(),

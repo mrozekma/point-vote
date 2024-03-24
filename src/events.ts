@@ -11,13 +11,6 @@ type Callback<T> = (arg: T | ErrorObject) => void;
 
 export interface JiraAuth {
 	token: string;
-	secret: string;
-}
-
-export interface JiraLogin {
-	token: string;
-	secret: string;
-	url: string;
 }
 
 export interface JiraUser {
@@ -71,8 +64,8 @@ export interface SessionFullJson extends SessionJson {
 export interface ClientToServer {
 	setPathname(pathname: string): void;
 
-	jiraLogin(originUrl: string, cb: Callback<JiraLogin>): void;
-	jiraLoginFinish(reqToken: string, reqSecret: string, verifier: string, cb: Callback<JiraAuth>): void;
+	jiraLogin(originUrl: string, cb: Callback<{ url: string }>): void;
+	jiraLoginFinish(originUrl: string, code: string, cb: Callback<JiraAuth>): void;
 	jiraGetUser(auth: JiraAuth, cb: Callback<JiraUser>): void;
 
 	createSession(name: string, cb: Callback<SessionJson>): void;
