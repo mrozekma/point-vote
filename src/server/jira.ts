@@ -53,6 +53,33 @@ async function makeJiraApi(socket: ServerSocket): Promise<JiraApi> {
 	}
 }
 
+async function getImageBlobIfHosted(imageUrl: string, jira: JiraApi) {
+	// If the url isn't hosted by Jira, just use it
+	const { protocol, host, port } = new URL(imageUrl);
+	if (jiraUrl.protocol !== protocol || jiraUrl.host !== host || jiraUrl.port !== port) {
+		return imageUrl;
+	}
+
+	// If the image is hosted by Jira and Jira doesn't allow anonymous access, the user's browser won't be able to do a cross-site request for the image, it'll just get a generic image back.
+	// Instead, request the image data here and return a blob URL.
+	try {
+		// @ts-ignore doRequest() and makeRequestHeader() are private
+		const data: Buffer = await jira.doRequest(jira.makeRequestHeader(imageUrl, { encoding: null }));
+		let type: { mime: string } | undefined = await imageType(data);
+		if (!type) {
+			if (isSvg(data)) {
+				type = { mime: 'image/svg+xml' };
+			} else {
+				return undefined;
+			}
+		}
+		return `data:${type.mime};base64,${data.toString('base64')}`;
+	} catch (e) {
+		console.error(e);
+		return undefined;
+	}
+}
+
 async function getCurrentUser(socket: ServerSocket): Promise<JiraUser> {
 	const jira = await makeJiraApi(socket);
 	const info = await jira.getCurrentUser();
@@ -74,33 +101,29 @@ async function getCurrentUser(socket: ServerSocket): Promise<JiraUser> {
 					largest = k;
 				}
 			}
-			const url: string = info.avatarUrls[largest];
-			{
-				const { protocol, host, port } = new URL(url);
-				if (jiraUrl.protocol !== protocol || jiraUrl.host !== host || jiraUrl.port !== port) {
-					return url;
-				}
-			}
-			// If the avatar is hosted by Jira and Jira doesn't allow anonymous access, the user's browser won't be able to do a cross-site request for the avatar, it'll just get a generic image back.
-			// Instead, request the image data here and return a blob URL.
-			try {
-				// @ts-ignore doRequest() and makeRequestHeader() are private
-				const data: Buffer = await jira.doRequest(jira.makeRequestHeader(url, { encoding: null }));
-				let type: { mime: string } | undefined = await imageType(data);
-				if (!type) {
-					if (isSvg(data)) {
-						type = { mime: 'image/svg+xml' };
-					} else {
-						return undefined;
-					}
-				}
-				return `data:${type.mime};base64,${data.toString('base64')}`;
-			} catch (e) {
-				console.error(e);
-				return undefined;
-			}
+			return await getImageBlobIfHosted(info.avatarUrls[largest], jira);
 		})(),
 	};
+}
+
+async function buildIssueDescription(issue: JiraApi.JsonResponse, jira: JiraApi) {
+	let html = config.jira.renderFields
+		.map(name => issue.renderedFields[name])
+		.filter(val => val?.trim())
+		.join('<hr>');
+
+	// This is so fragile, but it's something
+	const pat = /<img src="(.*?)"/g;
+	const blobs = new Map<string, string>();
+	for(const match of html.matchAll(pat)) {
+		const url = match[1];
+		if(!blobs.has(url)) {
+			blobs.set(url, await getImageBlobIfHosted(url, jira) ?? url);
+		}
+	}
+	html = html.replaceAll(pat, (_, src) => `<img src="${blobs.get(src)}"`);
+
+	return html;
 }
 
 const jiraIssueRe = new RegExp(`^(?:(?:${jiraUrl.protocol}//)?${jiraUrl.host}.*/browse/)?([A-Za-z0-9]+-[0-9]+)$`);
@@ -116,7 +139,7 @@ export async function getJiraIssue(socket: ServerSocket, key_or_url: string): Pr
 		key,
 		url: `${jiraUrl}${jiraUrl.toString().endsWith('/') ? '' : '/'}browse/${key}`,
 		summary: issue.fields.summary,
-		descriptionHtml: issue.renderedFields.description,
+		descriptionHtml: await buildIssueDescription(issue, jira),
 		storyPoints: config.jira.storyPointsFieldName ? issue.fields[config.jira.storyPointsFieldName] ?? undefined : undefined,
 	};
 }

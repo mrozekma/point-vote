@@ -13,6 +13,7 @@ const configJoi = joi.object({
 		clientSecret: joi.string().required(),
 		storyPointsFieldName: joi.string(),
 		strictSSL: joi.boolean().default(true),
+		renderFields: joi.array().items(joi.string()).default(['description']),
 	}).required(),
 	api: joi.object({
 		port: joi.number().required(),
