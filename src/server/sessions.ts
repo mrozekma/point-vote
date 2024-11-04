@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
 import randomstring from 'randomstring';
-import { Socket } from 'socket.io';
 
-import { ClientToServer, ErrorObject, isErrorObject, JiraAuth, JiraIssue, JiraUser, Round, ServerToClient, SessionFullJson, SessionJson } from '../events';
+import { ErrorObject, isErrorObject, JiraIssue, JiraUser, Round, ServerSocket, SessionFullJson, SessionJson } from '../events';
 import { getJiraIssue, setJiraStoryPoints } from './jira';
 
 interface JiraMultiUser extends JiraUser {
@@ -136,13 +135,13 @@ export class Session {
 		this.changed();
 	}
 
-	public async setStoryPoints(points: number, auth: JiraAuth): Promise<void> {
+	public async setStoryPoints(points: number, socket: ServerSocket): Promise<void> {
 		if (!this.round) {
 			throw new Error("No round");
 		} else if (!this.round.jiraIssue || isErrorObject(this.round.jiraIssue)) {
 			throw new Error("No JIRA issue");
 		}
-		await setJiraStoryPoints(auth, this.round.jiraIssue.key, points);
+		await setJiraStoryPoints(socket, this.round.jiraIssue.key, points);
 		this.round.jiraIssue.storyPoints = points;
 		this.changed();
 	}
@@ -233,14 +232,14 @@ export default class Sessions extends EventEmitter {
 		}
 	}
 
-	public hookSocket(socket: Socket<ClientToServer, ServerToClient>) {
+	public hookSocket(socket: ServerSocket) {
 		socket.on('getSessions', cb => cb(this.getAll().map(session => session.toJson())));
 		socket.on('getSession', (id, cb) => {
 			const session = this.get(id);
 			cb(session ? session.toFullJson() : { error: "Session not found" });
 		});
 		socket.on('createSession', (name, cb) => {
-			const user: JiraUser = socket.data.user;
+			const user: JiraUser | undefined = socket.data.user;
 			if (!user) {
 				return cb({ error: "Not logged in" });
 			}
@@ -257,8 +256,8 @@ export default class Sessions extends EventEmitter {
 		});
 
 		async function getSessionAndUser(errorCb: (err: ErrorObject) => void, mustBeOwner: boolean, mustHaveRound: boolean, cb: (session: Session, user: JiraUser) => void) {
-			const session: Session = socket.data.session;
-			const user: JiraUser = socket.data.user;
+			const session: Session | undefined = socket.data.session;
+			const user: JiraUser | undefined = socket.data.user;
 			if (!session) {
 				errorCb({ error: "No session" });
 			} else if (!user) {
@@ -276,16 +275,18 @@ export default class Sessions extends EventEmitter {
 			}
 		}
 
-		socket.on('startRound', (description, options, settings: Round['settings'], jiraAuth, cb) => {
+		socket.on('startRound', (description, options, settings: Round['settings'], cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
+				if(!socket.data.auth) {
+					throw new Error("Not logged in");
+				}
 				description = description.trim() || 'Vote';
 				if (new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
 				}
 				let jiraIssue: JiraIssue | ErrorObject | undefined;
 				try {
-					console.log(jiraAuth, description);
-					jiraIssue = await getJiraIssue(jiraAuth, description);
+					jiraIssue = await getJiraIssue(socket, description);
 				} catch (e) {
 					jiraIssue = {
 						error: `${e}`,
@@ -326,9 +327,9 @@ export default class Sessions extends EventEmitter {
 			});
 		});
 
-		socket.on('setStoryPoints', (points, jiraAuth, cb) => {
+		socket.on('setStoryPoints', (points, cb) => {
 			getSessionAndUser(cb, true, true, async (session, user) => {
-				await session.setStoryPoints(points, jiraAuth);
+				await session.setStoryPoints(points, socket);
 				cb(undefined);
 			});
 		});

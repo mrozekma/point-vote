@@ -3,13 +3,18 @@ import { storeToRefs } from 'pinia';
 import Login from './components/login.vue';
 import useStore from './store';
 
+const isDevMode = import.meta.env.DEV;
+
 const store = useStore();
-const loggedIn = storeToRefs(store).jira;
+const { server, jira: loggedIn } = storeToRefs(store);
 </script>
 
 <template>
+	<a-tag v-if="isDevMode" color="blue" style="float: right">Dev</a-tag>
 	<Suspense>
-		<router-view v-if="loggedIn" />
+		<a-alert v-if="server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
+		<a-spin v-else-if="!server.connected" />
+		<router-view v-else-if="loggedIn" />
 		<Login v-else />
 		<template #fallback>
 			<a-spin size="large" />

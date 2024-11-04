@@ -4,6 +4,7 @@ import * as joi from 'typesafe-joi';
 const configJoi = joi.object({
 	server: joi.object({
 		url: joi.string().required(),
+		redirectUrl: joi.string().default<string>(joi.ref('url')),
 		websocketPort: joi.number().default(3001),
 	}).required(),
 	jira: joi.object({

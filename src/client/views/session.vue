@@ -34,8 +34,14 @@ const store = useStore();
 // 	});
 // }
 
-function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
-	return new Promise(resolve => store.socket.emit('getSession', id, resolve));
+//TODO This function has weird semantics now, it just collapses the promise
+async function getSession(id: string): Promise<SessionFullJson | ErrorObject> {
+	// return new Promise(resolve => store.socket.emit('getSession', id, resolve));
+	try {
+		return await store.sendServer('getSession', id);
+	} catch(e) {
+		return { error: `${e}` };
+	}
 }
 
 const roundSettings = reactive((() => {
@@ -52,7 +58,7 @@ const roundSettings = reactive((() => {
 watch(roundSettings, newSettings => {
 	localStorage.setItem('settings', JSON.stringify(newSettings));
 	if(isRoundActive()) {
-		sendServer('setRoundSettings', newSettings);
+		store.sendServer('setRoundSettings', newSettings).catch(showErrorPopup);
 	}
 });
 
@@ -92,26 +98,8 @@ const newRound = reactive({
 	error: undefined as string | undefined,
 });
 
-type RemoveCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
-type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? Promise<V> : never;
-
-// Wrapper around store.socket.emit() that converts the callback into a Promise, and shows a popup when the response is an error.
-// This does assume the callback is last, the typing doesn't enforce it.
-function sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveCallbackParam<EventParams<ClientToServer, Ev>>): PromisifyCallbackParam<EventParams<ClientToServer, Ev>> {
-	const arr = params as any;
-	//@ts-ignore
-	return new Promise((resolve, reject) => {
-		// Add the missing callback argument and have it resolve/reject the promise depending on the value it's called with
-		arr.push((res: any) => {
-			if (isErrorObject(res)) {
-				message.error(res.error, 5);
-				reject(res.error);
-			} else {
-				resolve(res);
-			}
-		});
-		store.socket.emit(event, ...arr);
-	});
+function showErrorPopup(msg: any) {
+	message.error(`${msg}`, 5);
 }
 
 function getRound(): Round {
@@ -129,29 +117,29 @@ function isRoundActive(): boolean {
 	}
 }
 
-function startRound() {
+async function startRound() {
 	newRound.loading = true;
 	newRound.error = undefined;
-	sendServer('startRound', newRound.description, newRound.options, roundSettings, store.jira!.auth)
-		.then(() => {
-			newRound.description = '';
-		})
-		.finally(() => {
-			newRound.loading = false;
-		});
+	try {
+		await store.sendServer('startRound', newRound.description, newRound.options, roundSettings);
+		newRound.description = '';
+	} catch(e) {
+		showErrorPopup(e);
+	}
+	newRound.loading = false;
 }
 
 function endRound() {
-	sendServer('endRound');
+	store.sendServer('endRound').catch(showErrorPopup);
 }
 
 function clearRound() {
-	sendServer('clearRound');
+	store.sendServer('clearRound').catch(showErrorPopup);
 }
 
 function restartRound() {
 	const { description, options } = getRound();
-	sendServer('startRound', description, options, roundSettings, store.jira!.auth);
+	store.sendServer('startRound', description, options, roundSettings).catch(showErrorPopup);
 }
 
 let session = ref<SessionFullJson | ErrorObject>(await getSession(route.params.sessionId as string));
@@ -345,9 +333,9 @@ function castVote(vote: string | false) {
 	getRound();
 	if (vote === myVote.value) {
 		// Clicked their current vote again; retract it
-		sendServer('retractVote').then(() => myVote.value = undefined);
+		store.sendServer('retractVote').then(() => myVote.value = undefined).catch(showErrorPopup);
 	} else {
-		sendServer('castVote', vote).then(() => myVote.value = vote);
+		store.sendServer('castVote', vote).then(() => myVote.value = vote).catch(showErrorPopup);
 	}
 }
 
@@ -408,16 +396,19 @@ hotkeys('enter', 'vote', () => {
 });
 hotkeys('escape', 'vote', () => cancelHiddenVote());
 
-function setStoryPoints(points: number) {
+async function setStoryPoints(points: number) {
 	if (isErrorObject(session.value) || !session.value.round) {
 		throw new Error("No round");
 	} else if (!session.value.round.jiraIssue || isErrorObject(session.value.round.jiraIssue)) {
 		throw new Error("No JIRA issue");
 	}
 	const key = session.value.round.jiraIssue.key;
-	sendServer('setStoryPoints', points, store.jira!.auth).then(() => {
+	try {
+		await store.sendServer('setStoryPoints', points);
 		message.success(`Set ${key}'s story points to ${points}`, 5);
-	});
+	} catch(e) {
+		showErrorPopup(e);
+	}
 }
 
 async function browserNotification(title: string, body: string, onClick?: (e: Event) => void) {

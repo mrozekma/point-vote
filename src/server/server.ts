@@ -15,7 +15,7 @@ const io = new Server<ClientToServer, ServerToClient>({
 });
 
 io.on('connection', socket => {
-	socket.on('setPathname', pathname => {
+	socket.on('setPathname', (pathname, cb) => {
 		if (socket.data.session && socket.data.user) {
 			(socket.data.session as Session).removeMember(socket.data.user);
 			socket.data.session = undefined;
@@ -40,6 +40,8 @@ io.on('connection', socket => {
 				}
 			}
 		}
+
+		cb(undefined);
 	});
 
 	jiraHookSocket(socket);

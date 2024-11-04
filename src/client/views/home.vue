@@ -21,16 +21,15 @@ const newSession = reactive({
 	error: undefined as string | undefined,
 });
 
-function createSession() {
+async function createSession() {
 	newSession.loading = true;
-	store.socket.emit('createSession', newSession.name, session => {
-		if (isErrorObject(session)) {
-			newSession.loading = false;
-			newSession.error = session.error;
-		} else {
-			router.push(`/${session.id}`);
-		}
-	});
+	try {
+		const session = await store.sendServer('createSession', newSession.name);
+		router.push(`/${session.id}`);
+	} catch(e) {
+		newSession.loading = false;
+		newSession.error = `${e}`;
+	}
 }
 
 const sessions = ref<SessionJson[]>([]);
@@ -39,13 +38,9 @@ store.socket.on('updateSessions', val => {
 	sessions.value = val;
 	sessionsError.value = undefined;
 });
-store.socket.emit('getSessions', val => {
-	if (isErrorObject(val)) {
-		sessionsError.value = val.error;
-	} else {
-		sessions.value = val;
-	}
-});
+store.sendServer('getSessions')
+	.then(val => sessions.value = val)
+	.catch(e => sessionsError.value = `${e}`);
 
 const sessionsColumns: TableColumnProps[] = [{
 	dataIndex: 'id',

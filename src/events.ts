@@ -1,3 +1,8 @@
+import { Socket } from 'socket.io';
+import { DefaultEventsMap } from 'socket.io/dist/typed-events';
+
+import { Session } from './server/sessions';
+
 export interface ErrorObject {
 	code?: number;
 	error: string;
@@ -10,7 +15,12 @@ export function isErrorObject(obj: any): obj is ErrorObject {
 type Callback<T> = (arg: T | ErrorObject) => void;
 
 export interface JiraAuth {
-	token: string;
+	scope: string;
+	access_token: string;
+	token_type: string;
+	expires_in: number;
+	refresh_token: string;
+	refreshing?: boolean;
 }
 
 export interface JiraUser {
@@ -62,28 +72,39 @@ export interface SessionFullJson extends SessionJson {
 }
 
 export interface ClientToServer {
-	setPathname(pathname: string): void;
+	setPathname(pathname: string, cb: Callback<undefined>): void;
+	setJiraAuth(auth: JiraAuth, cb: Callback<JiraUser>): void;
 
-	jiraLogin(originUrl: string, cb: Callback<{ url: string }>): void;
-	jiraLoginFinish(originUrl: string, code: string, cb: Callback<JiraAuth>): void;
-	jiraGetUser(auth: JiraAuth, cb: Callback<JiraUser>): void;
+	jiraLogin(cb: Callback<{ url: string }>): void;
+	jiraLoginFinish(grant: string, type: 'authorization_code' | 'refresh_token', cb: Callback<undefined>): void;
+	jiraGetUser(cb: Callback<JiraUser>): void;
 
 	createSession(name: string, cb: Callback<SessionJson>): void;
 	getSession(id: string, cb: Callback<SessionFullJson>): void;
 	getSessions(cb: Callback<SessionJson[]>): void;
 
-	startRound(description: string, options: string[], settings: Round['settings'], jiraAuth: JiraAuth, cb: Callback<undefined>): void;
+	startRound(description: string, options: string[], settings: Round['settings'], cb: Callback<undefined>): void;
 	setRoundSettings(settings: Round['settings'], cb: Callback<undefined>): void;
 	endRound(cb: Callback<undefined>): void;
 	clearRound(cb: Callback<undefined>): void;
 	castVote(vote: string | false, cb: Callback<undefined>): void;
 	retractVote(cb: Callback<undefined>): void;
-	setStoryPoints(points: number, jiraAuth: JiraAuth, cb: Callback<undefined>): void;
+	setStoryPoints(points: number, cb: Callback<undefined>): void;
 }
 
 export interface ServerToClient {
+	updateJiraAuth(auth: JiraAuth): void;
 	updateSession(session: SessionFullJson): void;
 	updateSessions(sessions: SessionJson[]): void;
 	endSession(id: string): void;
 	pushNewRoundDescription(description: string, optionSet: string | undefined): void;
 }
+
+export interface SocketData {
+	auth?: JiraAuth & { refreshing?: boolean };
+	user?: JiraUser;
+	session?: Session;
+}
+
+export type ServerSocket = Socket<ClientToServer, ServerToClient, DefaultEventsMap, SocketData>;
+export type ClientSocket = Socket<ServerToClient, ClientToServer>;

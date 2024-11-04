@@ -2,7 +2,12 @@ import { defineStore } from 'pinia'
 import { io, Socket } from 'socket.io-client';
 import { isNavigationFailure, useRouter } from 'vue-router';
 
-import { ClientToServer, isErrorObject, JiraAuth, JiraUser, ServerToClient } from '../events';
+import { ClientToServer, ErrorObject, isErrorObject, JiraAuth, JiraUser, ServerToClient } from '../events';
+import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+
+// Used by sendServer()
+type RemoveCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
+type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? Promise<V> : never;
 
 const def = defineStore('store', {
 	state: () => {
@@ -13,7 +18,6 @@ const def = defineStore('store', {
 				error: undefined as string | undefined,
 			},
 			jira: undefined as {
-				auth: JiraAuth,
 				user: JiraUser,
 			} | undefined,
 		};
@@ -24,12 +28,11 @@ const def = defineStore('store', {
 		},
 	},
 	actions: {
-		onLogin(auth: JiraAuth, user: JiraUser) {
-			this.jira = { auth, user };
-			window.localStorage.setItem('jiraToken', auth.token);
+		onLogin(user: JiraUser) {
+			this.jira = { user };
 		},
 		onLogout() {
-			window.localStorage.removeItem('jiraToken');
+			window.localStorage.removeItem('jiraAuth');
 			this.jira = undefined;
 		},
 		getLogin(): Promise<JiraUser> {
@@ -45,36 +48,43 @@ const def = defineStore('store', {
 				});
 			});
 		},
+		// Wrapper around socket.emit() that converts the callback into a Promise.
+		sendServer<Ev extends EventNames<ClientToServer>>(event: Ev, ...params: RemoveCallbackParam<EventParams<ClientToServer, Ev>>): PromisifyCallbackParam<EventParams<ClientToServer, Ev>> {
+			const arr = params as any;
+			//@ts-ignore
+			return new Promise((resolve, reject) => {
+				//@ts-ignore
+				this.socket.emit(event, ...arr, res => {
+					isErrorObject(res) ? reject(res.error) : resolve(res);
+				});
+			});
+		},
 	},
 });
 export default function () {
 	const store = def();
-	store.socket.on('connect', () => {
-		// Wait to set server.connected until we've tried to load the login info
-		function setConnected() {
-			store.$patch({
-				server: {
-					connected: true,
-					error: undefined,
-				},
-			});
+	store.socket.on('connect', async () => {
+		const token = window.localStorage.getItem('jiraAuth');
+		if (token) {
+			const auth: JiraAuth = JSON.parse(token);
+			try {
+				const user = await store.sendServer('setJiraAuth', auth);
+				store.$patch({
+					jira: { user },
+				});
+				store.sendServer('setPathname', window.location.pathname);
+			} catch {
+				window.localStorage.removeItem('jiraAuth');
+			}
 		}
 
-		const token = window.localStorage.getItem('jiraToken');
-		if (token) {
-			const auth: JiraAuth = { token };
-			store.socket.emit('jiraGetUser', auth, user => {
-				if (isErrorObject(user)) {
-					window.localStorage.removeItem('jiraToken');
-				} else {
-					store.jira = { auth, user };
-					store.socket.emit('setPathname', window.location.pathname);
-				}
-				setConnected();
-			});
-		} else {
-			setConnected();
-		}
+		// Wait to set server.connected until we've tried to load the login info
+		store.$patch({
+			server: {
+				connected: true,
+				error: undefined,
+			},
+		});
 	});
 	store.socket.on('disconnect', () => {
 		store.$patch({
@@ -93,9 +103,17 @@ export default function () {
 			},
 		});
 	});
+	store.socket.on('updateJiraAuth', auth => {
+		if(auth) {
+			window.localStorage.setItem('jiraAuth', JSON.stringify(auth));
+		} else {
+			window.localStorage.removeItem('jiraAuth');
+		}
+	});
+
 	useRouter().afterEach((to, from, failure) => {
 		if (!isNavigationFailure(failure)) {
-			store.socket.emit('setPathname', to.path);
+			store.sendServer('setPathname', to.path);
 		}
 	});
 	return store;
