@@ -84,6 +84,7 @@ export interface ClientToServer {
 	getSessions(cb: Callback<SessionJson[]>): void;
 
 	startRound(description: string, options: string[], settings: Round['settings'], cb: Callback<undefined>): void;
+	setRoundDescription(description: string, cb: Callback<undefined>): void;
 	setRoundSettings(settings: Round['settings'], cb: Callback<undefined>): void;
 	endRound(cb: Callback<undefined>): void;
 	clearRound(cb: Callback<undefined>): void;

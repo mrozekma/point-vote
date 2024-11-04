@@ -396,6 +396,15 @@ hotkeys('enter', 'vote', () => {
 });
 hotkeys('escape', 'vote', () => cancelHiddenVote());
 
+function refreshJiraIssue() {
+	if (isErrorObject(session.value) || !session.value.round) {
+		throw new Error("No round");
+	} else if (!session.value.round.jiraIssue || isErrorObject(session.value.round.jiraIssue)) {
+		throw new Error("No JIRA issue");
+	}
+	store.sendServer('setRoundDescription', session.value.round.description).catch(showErrorPopup);
+}
+
 async function setStoryPoints(points: number) {
 	if (isErrorObject(session.value) || !session.value.round) {
 		throw new Error("No round");
@@ -474,9 +483,16 @@ async function toggleRoundNotifications(checked: boolean) {
 					<a-alert v-if="isErrorObject(session.round.jiraIssue)" type="error" :message="session.round.jiraIssue.error" />
 					<a-card v-else :title="`${session.round.jiraIssue.key}: ${session.round.jiraIssue.summary}`" size="small">
 						<div v-html="session.round.jiraIssue.descriptionHtml" />
-						<template #extra>
-							<a-tag v-if="!isErrorObject(session.round.jiraIssue) && session.round.jiraIssue.storyPoints !== undefined">{{ session.round.jiraIssue.storyPoints }}</a-tag>
-							<a-button v-if="!isErrorObject(session.round.jiraIssue)" :href="session.round.jiraIssue.url" target="_blank" size="small"><i class="fab fa-jira"></i></a-button>
+						<template #extra v-if="!isErrorObject(session.round.jiraIssue)">
+							<a-tooltip v-if="session.round.jiraIssue.storyPoints !== undefined" placement="bottom" title="Current story points">
+								<a-tag>{{ session.round.jiraIssue.storyPoints }}</a-tag>
+							</a-tooltip>
+							<a-tooltip placement="bottom" title="Refresh description">
+								<a-button @click="refreshJiraIssue" size="small"><i class="fas fa-sync-alt"></i></a-button>
+							</a-tooltip>
+							<a-tooltip placement="bottom" title="Open in JIRA">
+								<a-button :href="session.round.jiraIssue.url" target="_blank" size="small"><i class="fab fa-jira"></i></a-button>
+							</a-tooltip>
 						</template>
 					</a-card>
 				</template>
@@ -617,6 +633,10 @@ async function toggleRoundNotifications(checked: boolean) {
 
 	.ant-card {
 		margin-top: 10px;
+
+		/deep/ .ant-card-extra .ant-btn:not(:last-child) {
+			margin-right: 8px;
+		}
 	}
 }
 

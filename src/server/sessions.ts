@@ -73,6 +73,15 @@ export class Session {
 		this.changed();
 	}
 
+	public setRoundDescription(description: string, jiraIssue: JiraIssue | ErrorObject | undefined) {
+		if (!this.round) {
+			throw new Error("No round");
+		}
+		this.round.description = description;
+		this.round.jiraIssue = jiraIssue;
+		this.changed();
+	}
+
 	public setRoundSettings(settings: Round['settings']) {
 		if (!this.round) {
 			throw new Error("No round");
@@ -277,9 +286,6 @@ export default class Sessions extends EventEmitter {
 
 		socket.on('startRound', (description, options, settings: Round['settings'], cb) => {
 			getSessionAndUser(cb, true, false, async (session, user) => {
-				if(!socket.data.auth) {
-					throw new Error("Not logged in");
-				}
 				description = description.trim() || 'Vote';
 				if (new Set(options).size < 2) {
 					throw new Error("Need at least two options to vote on");
@@ -293,6 +299,21 @@ export default class Sessions extends EventEmitter {
 					};
 				}
 				session.startRound(description, options, settings, jiraIssue);
+				cb(undefined);
+			});
+		});
+		socket.on('setRoundDescription', (description: string, cb) => {
+			getSessionAndUser(cb, true, true, async (session, user) => {
+				description = description.trim() || 'Vote';
+				let jiraIssue: JiraIssue | ErrorObject | undefined;
+				try {
+					jiraIssue = await getJiraIssue(socket, description);
+				} catch (e) {
+					jiraIssue = {
+						error: `${e}`,
+					};
+				}
+				session.setRoundDescription(description, jiraIssue);
 				cb(undefined);
 			});
 		});
