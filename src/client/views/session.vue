@@ -319,14 +319,19 @@ let voteStats = computed(() => {
 		return undefined;
 	}
 
-	const min = Math.min(...numericVotes.map(v => v.vote));
-	const max = Math.max(...numericVotes.map(v => v.vote));
+	const numericVotesFlat: number[] = numericVotes.sort((a, b) => a.vote - b.vote).flatMap(v => new Array(v.voters.length).fill(v.vote));
+
+	const min = Math.min(...numericVotesFlat);
+	const max = Math.max(...numericVotesFlat);
 	// Should the number of votes include abstentions? It feels like no.
-	const numVotes = numericVotes.reduce((acc, v) => acc + v.voters.length, 0);
-	const mean = numericVotes.reduce((acc, v) => acc + v.vote * v.voters.length, 0) / numVotes;
+	const numVotes = numericVotesFlat.length;
+	const mean = numericVotesFlat.reduce((acc, v) => acc + v, 0) / numVotes;
+	const median = (numVotes % 2)
+		? numericVotesFlat[(numVotes - 1) / 2]
+		: (numericVotesFlat[numVotes / 2 - 1] + numericVotesFlat[numVotes / 2]) / 2;
 	const modes = numericVotes.filter(v => v.isPlurality).map(v => v.vote);
-	const stddev = Math.sqrt(numericVotes.reduce((acc, v) => acc + Math.pow(v.vote - mean, 2) * v.voters.length, 0) / numVotes)
-	return { min, max, numVotes, mean, modes, stddev };
+	const stddev = Math.sqrt(numericVotesFlat.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / numVotes)
+	return { min, max, numVotes, mean, median, modes, stddev };
 });
 
 function castVote(vote: string | false) {
@@ -558,6 +563,7 @@ async function toggleRoundNotifications(checked: boolean) {
 						<a-statistic title="Min" :value="voteStats.min" />
 						<a-statistic title="Max" :value="voteStats.max" />
 						<a-statistic title="Mean" :value="voteStats.mean" :precision="2" />
+						<a-statistic title="Median" :value="voteStats.median" />
 						<a-statistic :title="(voteStats.modes.length == 1) ? 'Mode' : 'Modes'" :value="voteStats.modes.join(', ')" />
 						<a-statistic title="Std. Dev." :value="voteStats.stddev" :precision="2" />
 					</div>
