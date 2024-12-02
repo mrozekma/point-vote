@@ -21,7 +21,8 @@ const configJoi = joi.object({
 	}),
 }).required();
 
-const obj = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+const filename = (process.env.NODE_ENV === 'development') ? 'config-dev.json' : 'config.json';
+const obj = JSON.parse(fs.readFileSync(filename, 'utf8'));
 const { error, value } = configJoi.validate(obj);
 if (error) {
 	throw new Error(`Failed to parse configuration file: ${error.message}`);

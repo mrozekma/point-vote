@@ -3,14 +3,18 @@ import { storeToRefs } from 'pinia';
 import Login from './components/login.vue';
 import useStore from './store';
 
-const isDevMode = import.meta.env.DEV;
+const version = {
+	version: BUILD_VERSION,
+	link: BUILD_LINK,
+	date: BUILD_DATE,
+	dev: import.meta.env.DEV,
+};
 
 const store = useStore();
 const { server, jira: loggedIn } = storeToRefs(store);
 </script>
 
 <template>
-	<a-tag v-if="isDevMode" color="blue" style="float: right">Dev</a-tag>
 	<Suspense>
 		<a-alert v-if="server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
 		<a-spin v-else-if="!server.connected" />
@@ -20,6 +24,11 @@ const { server, jira: loggedIn } = storeToRefs(store);
 			<a-spin size="large" />
 		</template>
 	</Suspense>
+	<footer>
+		<a target="_blank" :href="version.link">{{ version.version }}</a>
+		| Built {{ version.date }}
+		<a-tag v-if="version.dev" color="blue">Dev</a-tag>
+	</footer>
 </template>
 
 <style lang="less">
@@ -51,6 +60,19 @@ const { server, jira: loggedIn } = storeToRefs(store);
 		.ant-form-item-control-wrapper {
 			grid-column: 2;
 		}
+	}
+}
+
+footer {
+	position: absolute;
+	bottom: 10px;
+	height: 26px;
+	right: 10px;
+	padding-top: 10px;
+	font-size: smaller;
+	color: #d9d9d9;
+	a {
+		color: inherit;
 	}
 }
 </style>
