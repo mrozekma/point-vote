@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { theme } from 'ant-design-vue';
 import { storeToRefs } from 'pinia';
 import Login from './components/login.vue';
 import useStore from './store';
@@ -15,25 +16,37 @@ const { server, jira: loggedIn } = storeToRefs(store);
 </script>
 
 <template>
-	<Suspense>
-		<a-alert v-if="server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
-		<a-spin v-else-if="!server.connected" />
-		<router-view v-else-if="loggedIn" />
-		<Login v-else />
-		<template #fallback>
-			<a-spin size="large" />
-		</template>
-	</Suspense>
-	<footer>
-		<a target="_blank" :href="version.link">{{ version.version }}</a>
-		| Built {{ version.date }}
-		<a-tag v-if="version.dev" color="blue">Dev</a-tag>
-	</footer>
+	<a-config-provider :theme="{algorithm: theme.defaultAlgorithm}">
+		<main>
+			<Suspense>
+				<a-alert v-if="server.error" message="Cannot connect to server" :description="`${store.server.error}. Retrying...`" type="error" show-icon />
+				<a-spin v-else-if="!server.connected" />
+				<router-view v-else-if="loggedIn" />
+				<Login v-else />
+				<template #fallback>
+					<a-spin size="large" />
+				</template>
+			</Suspense>
+		</main>
+		<footer>
+			<a target="_blank" :href="version.link">{{ version.version }}</a>
+			&nbsp;|&nbsp;Built {{ version.date }}
+			<a-tag v-if="version.dev" color="blue">Dev</a-tag>
+		</footer>
+	</a-config-provider>
 </template>
 
 <style lang="less">
 #app {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
 	padding: 10px;
+	font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,"Apple Color Emoji","Segoe UI Emoji",Segoe UI Symbol,"Noto Color Emoji";
+}
+
+main {
+	flex-grow: 1;
 }
 
 .ant-form.two-col {
@@ -43,6 +56,10 @@ const { server, jira: loggedIn } = storeToRefs(store);
 	padding: 5px;
 
 	.ant-form-item {
+		display: contents;
+	}
+
+	.ant-form-item-row {
 		display: contents;
 
 		// Someday I'll probably come to regret this, but not using these currently and they make large empty grid rows in Firefox
@@ -64,15 +81,18 @@ const { server, jira: loggedIn } = storeToRefs(store);
 }
 
 footer {
-	position: absolute;
-	bottom: 10px;
-	height: 26px;
-	right: 10px;
+	display: flex;
+	justify-content: flex-end;
 	padding-top: 10px;
 	font-size: smaller;
 	color: #d9d9d9;
 	a {
 		color: inherit;
+	}
+	.ant-tag {
+		position: relative;
+		top: -2px;
+		left: 5px;
 	}
 }
 </style>

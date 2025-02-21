@@ -513,12 +513,12 @@ async function toggleRoundNotifications(checked: boolean) {
 			</div>
 			<div v-if="isOwner" class="button-bar">
 				<template v-if="!session.round.done">
-					<a-button type="danger" @click="endRound">End voting</a-button>
-					<a-button type="danger" @click="clearRound">Cancel round</a-button>
+					<a-button type="primary" danger @click="endRound">End voting</a-button>
+					<a-button type="primary" danger @click="clearRound">Cancel round</a-button>
 				</template>
 				<template v-else>
-					<a-button type="danger" @click="restartRound">Repeat round</a-button>
-					<a-button type="danger" @click="clearRound">Clear results</a-button>
+					<a-button type="primary" danger @click="restartRound">Repeat round</a-button>
+					<a-button type="primary" danger @click="clearRound">Clear results</a-button>
 				</template>
 			</div>
 		</template>

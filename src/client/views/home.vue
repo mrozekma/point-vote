@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router';
 import PvUser from '../components/user.vue';
 
 import useStore from '../store';
-import { isErrorObject, SessionJson } from '../../events';
+import { SessionJson } from '../../events';
 
 const router = useRouter();
 const store = useStore();
@@ -76,7 +76,7 @@ function customRow(session: SessionJson) {
 <template>
 	<div class="login-info">
 		<pv-user v-bind="store.jira!.user" size="large" />
-		<a-button type="danger" size="small" @click="logout">Logout</a-button>
+		<a-button type="primary" danger size="small" @click="logout">Logout</a-button>
 	</div>
 
 	<div class="sections">

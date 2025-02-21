@@ -1,4 +1,5 @@
 import * as child_process from 'child_process';
+import { readFileSync } from 'fs';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
@@ -10,11 +11,14 @@ const gitHash = child_process.execSync('git rev-parse HEAD', { cwd: __dirname, e
 const buildVersion = gitDesc.replace(/^heads\//, '');
 const buildLink = `${GITHUB_URL}/commit/${gitHash}`;
 
+const app_config = JSON.parse(readFileSync('config.json'));
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	root: 'src/client',
 	server: {
 		port: 4000,
+		allowedHosts: [new URL(app_config.server.url).hostname],
 	},
 	build: {
 		outDir: '../../dist/client',
