@@ -640,7 +640,7 @@ async function toggleRoundNotifications(checked: boolean) {
 	.ant-card {
 		margin-top: 10px;
 
-		/deep/ .ant-card-extra .ant-btn:not(:last-child) {
+		.ant-card-extra .ant-btn:not(:last-child) {
 			margin-right: 8px;
 		}
 	}
@@ -679,7 +679,7 @@ async function toggleRoundNotifications(checked: boolean) {
 		flex-grow: 1;
 	}
 
-	/deep/ .ant-statistic-content {
+	:deep(.ant-statistic-content) {
 		font-size: 12pt;
 	}
 }
@@ -731,7 +731,7 @@ async function toggleRoundNotifications(checked: boolean) {
 
 <!-- Syntax highlighting using colors from Jira -->
 <style lang="less" scoped>
-.description /deep/ .code {
+.description :deep(.code) {
 	border: 1px solid #c1c7d0;
 	background: #f4f5f7;
 	font-size: 12px;
