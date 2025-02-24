@@ -1,9 +1,11 @@
-import { defineStore } from 'pinia'
+import { theme } from 'ant-design-vue';
+import { defineStore, storeToRefs } from 'pinia'
 import { io, Socket } from 'socket.io-client';
 import { isNavigationFailure, useRouter } from 'vue-router';
 
 import { ClientToServer, ErrorObject, isErrorObject, JiraAuth, JiraUser, ServerToClient } from '../events';
 import { EventNames, EventParams } from 'socket.io/dist/typed-events';
+import { watch } from 'vue';
 
 // Used by sendServer()
 type RemoveCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObject) => void] ? U : never;
@@ -11,6 +13,11 @@ type PromisifyCallbackParam<T> = T extends [...infer U, (obj: infer V | ErrorObj
 
 const def = defineStore('store', {
 	state: () => {
+		const darkModePref = localStorage.getItem('darkMode');
+		const darkMode =
+			(darkModePref !== null) ? JSON.parse(darkModePref) :
+			window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches :
+			false;
 		return {
 			server: {
 				socket: io('ws://localhost:3001') as Socket<ServerToClient, ClientToServer>,
@@ -20,11 +27,16 @@ const def = defineStore('store', {
 			jira: undefined as {
 				user: JiraUser,
 			} | undefined,
+			darkMode,
 		};
 	},
 	getters: {
 		socket(state) {
 			return state.server.socket;
+		},
+		antTheme(state) {
+			const algorithm = state.darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm;
+			return algorithm(theme.defaultSeed);
 		},
 	},
 	actions: {
@@ -63,6 +75,10 @@ const def = defineStore('store', {
 });
 export default function () {
 	const store = def();
+	const { darkMode } = storeToRefs(store);
+	watch(darkMode, darkMode => {
+		window.localStorage.setItem('darkMode', `${darkMode}`);
+	});
 	store.socket.on('connect', async () => {
 		const token = window.localStorage.getItem('jiraAuth');
 		if (token) {
